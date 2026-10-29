@@ -11,6 +11,8 @@ namespace CRUDAppUsingADO.Models
         [Required]
         [StringLength(240, MinimumLength = 1)]
         public string Description { get; set; } = string.Empty;
+
+        public bool nBit { get; set; }
     }
 
     public class FeedbackUserDto
@@ -18,5 +20,16 @@ namespace CRUDAppUsingADO.Models
         public string UserId { get; set; } = string.Empty;
 
         public string UserName { get; set; } = string.Empty;
+    }
+
+    // Used to display feedback retrieved from the database
+    public class FeedbackViewModel
+    {
+        public int FeedbackId { get; set; }
+        public string UserId { get; set; } = string.Empty;
+        public string UserName { get; set; } = string.Empty;
+        public int Rating { get; set; }
+        public string Description { get; set; } = string.Empty;
+        public bool nBit { get; set; }
     }
 }

@@ -104,5 +104,46 @@ namespace CRUDAppUsingADO.Controllers
                 description = dto.Description.Trim()
             });
         }
+
+        // GET: api/feedback/5
+        // Get single feedback by FeedbackId
+        [HttpGet("{feedbackId:int}")]
+        public async Task<IActionResult> GetFeedbackById(int feedbackId)
+        {
+            if (feedbackId <= 0)
+            {
+                return BadRequest(new
+                {
+                    message = "Please provide a valid FeedbackId."
+                });
+            }
+
+            var feedback = await _feedbackDAL.GetFeedbackByIdAsync(feedbackId);
+
+            if (feedback == null)
+            {
+                return NotFound(new
+                {
+                    message = "Feedback not found."
+                });
+            }
+
+            return Ok(feedback);
+        }
+
+
+        // GET: api/feedback/all
+        // Get all feedback records
+        [HttpGet("all")]
+        public async Task<IActionResult> GetAllFeedback()
+        {
+            var feedbackList = await _feedbackDAL.GetAllFeedbackAsync();
+
+            return Ok(new
+            {
+                totalRecords = feedbackList.Count,
+                feedback = feedbackList
+            });
+        }
     }
 }
