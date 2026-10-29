@@ -115,5 +115,83 @@ namespace CRUDAppUsingADO.DataAccess
 
             return feedbackList;
         }
+
+
+
+
+        // home page
+        // Get the latest approved feedback submitted by the admin
+        public async Task<FeedbackViewModel?> GetLatestAdminFeedbackAsync(
+            string adminUserId)
+        {
+            await using SqlConnection con = new SqlConnection(_connectionString);
+            await con.OpenAsync();
+
+            const string query = @"
+        SELECT TOP (1)
+            FeedbackId, UserId, UserName, Rating, Description, nBit
+        FROM dbo.UserFeedback
+        WHERE UserId = @AdminUserId
+          AND nBit = 1
+        ORDER BY FeedbackId DESC;";
+
+            await using SqlCommand cmd = new SqlCommand(query, con);
+            cmd.Parameters.Add("@AdminUserId", SqlDbType.NVarChar, 100).Value =
+                adminUserId;
+
+            await using SqlDataReader reader = await cmd.ExecuteReaderAsync();
+
+            if (!await reader.ReadAsync())
+                return null;
+
+            return new FeedbackViewModel
+            {
+                FeedbackId = Convert.ToInt32(reader["FeedbackId"]),
+                UserId = reader["UserId"]?.ToString() ?? string.Empty,
+                UserName = reader["UserName"]?.ToString() ?? string.Empty,
+                Rating = Convert.ToInt32(reader["Rating"]),
+                Description = reader["Description"]?.ToString() ?? string.Empty,
+                nBit = Convert.ToBoolean(reader["nBit"])
+            };
+        }
+
+
+        // Get approved feedback submitted by other users
+        public async Task<List<FeedbackViewModel>> GetOtherFeedbackAsync(
+            string adminUserId)
+        {
+            var list = new List<FeedbackViewModel>();
+
+            await using SqlConnection con = new SqlConnection(_connectionString);
+            await con.OpenAsync();
+
+            const string query = @"
+        SELECT FeedbackId, UserId, UserName, Rating, Description, nBit
+        FROM dbo.UserFeedback
+        WHERE nBit = 1
+          AND UserId <> @AdminUserId
+        ORDER BY FeedbackId DESC;";
+
+            await using SqlCommand cmd = new SqlCommand(query, con);
+            cmd.Parameters.Add("@AdminUserId", SqlDbType.NVarChar, 100).Value =
+                adminUserId;
+
+            await using SqlDataReader reader = await cmd.ExecuteReaderAsync();
+
+            while (await reader.ReadAsync())
+            {
+                list.Add(new FeedbackViewModel
+                {
+                    FeedbackId = Convert.ToInt32(reader["FeedbackId"]),
+                    UserId = reader["UserId"]?.ToString() ?? string.Empty,
+                    UserName = reader["UserName"]?.ToString() ?? string.Empty,
+                    Rating = Convert.ToInt32(reader["Rating"]),
+                    Description = reader["Description"]?.ToString() ?? string.Empty,
+                    nBit = Convert.ToBoolean(reader["nBit"])
+                });
+            }
+
+            return list;
+        }
     }
 }
