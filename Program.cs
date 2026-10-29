@@ -123,7 +123,11 @@ builder.Services
                 ValidAudience = builder.Configuration["Jwt:Audience"],
 
                 ValidateLifetime = true,
-                ClockSkew = TimeSpan.Zero
+                ClockSkew = TimeSpan.Zero,
+
+                   // Recognize the role and name claims in your JWT.
+                RoleClaimType = System.Security.Claims.ClaimTypes.Role,
+                NameClaimType = System.Security.Claims.ClaimTypes.Name
             };
     });
 
@@ -219,7 +223,6 @@ app.UseCors("AllowReactApp");
 // Authentication must run before authorization.
 // Register each middleware only once.
 app.UseAuthentication();
-
 app.UseAuthorization();
 
 // Exception middleware
