@@ -414,5 +414,89 @@ namespace CRUDAppUsingADO.Controllers
                 user.CreatedAt
             });
         }
+
+        // SuperAdmin 
+
+
+        [HttpPost("superadmin/login")]
+        public async Task<ActionResult<AuthResponseDto>> SuperAdminLogin([FromBody] LoginDto dto)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new AuthResponseDto
+                {
+                    Success = false,
+                    Message = "Invalid input."
+                });
+            }
+            var user = await _userDal.GetUserByEmailAsync(dto.Email);
+            // Use the same generic message for invalid admin credentials.
+            if (user == null)
+            {
+                await _userDal.InsertAuditLogAsync(null, dto.Email, "SuperAdminLoginFailed", GetIp(), GetUserAgent(), false, "Invalid credentials");
+                return Unauthorized(new AuthResponseDto
+                {
+                    Success = false,
+                    Message = "Invalid admin credentials."
+                });
+            }
+
+            // Only the designated SuperAdmin role may use this endpoint.
+            if (!string.Equals(user.RoleName, "SuperAdmin", StringComparison.OrdinalIgnoreCase))
+            {
+                await _userDal.InsertAuditLogAsync(user.UserId, dto.Email, "SuperAdminLoginFailed", GetIp(), GetUserAgent(), false, "Insufficient role");
+                return Unauthorized(new AuthResponseDto
+                {
+                    Success = false,
+                    Message = "Invalid admin credentials."
+                });
+            }
+
+            if (!user.IsActive)
+            {
+                return Unauthorized(new AuthResponseDto
+                {
+                    Success = false,
+                    Message = "This account has been deactivated."
+                });
+            }
+
+            if (user.LockoutUntil.HasValue && user.LockoutUntil.Value > DateTime.UtcNow)
+            {
+                return Unauthorized(new AuthResponseDto
+                {
+                    Success = false,
+                    Message = "Account temporarily locked. Please try again later."
+                });
+            }
+
+            if (string.IsNullOrEmpty(user.PasswordHash) || string.IsNullOrEmpty(user.PasswordSalt))
+            {
+                return Unauthorized(new AuthResponseDto
+                {
+                    Success = false,
+                    Message = "Invalid admin credentials."
+                });
+            }
+
+            var passwordValid = _passwordService.VerifyPassword(dto.Password, user.PasswordHash, user.PasswordSalt);
+
+            if (!passwordValid)
+            {
+                await _userDal.UpdateFailedLoginCountAsync(dto.Email, reset: false);
+                await _userDal.InsertAuditLogAsync(user.UserId, dto.Email, "SuperAdminLoginFailed", GetIp(), GetUserAgent(), false, "Wrong password");
+                return Unauthorized(new AuthResponseDto
+                {
+                    Success = false,
+                    Message = "Invalid admin credentials."
+                });
+            }
+            await _userDal.UpdateFailedLoginCountAsync(dto.Email, reset: true);
+            await _userDal.InsertAuditLogAsync(user.UserId, dto.Email, "SuperAdminLogin", GetIp(), GetUserAgent(), true);
+            var tokens = await IssueTokensAsync(user);
+            SetRefreshTokenCookie(tokens.RefreshToken!);
+            return Ok(tokens);
+        }
+
     }
 }
