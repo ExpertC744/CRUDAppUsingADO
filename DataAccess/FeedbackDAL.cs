@@ -121,8 +121,7 @@ namespace CRUDAppUsingADO.DataAccess
 
         // home page
         // Get the latest approved feedback submitted by the admin
-        public async Task<FeedbackViewModel?> GetLatestAdminFeedbackAsync(
-            string adminUserId)
+        public async Task<FeedbackViewModel?> GetLatestAdminFeedbackAsync(string adminUserId)
         {
             await using SqlConnection con = new SqlConnection(_connectionString);
             await con.OpenAsync();
@@ -157,8 +156,7 @@ namespace CRUDAppUsingADO.DataAccess
 
 
         // Get approved feedback submitted by other users
-        public async Task<List<FeedbackViewModel>> GetOtherFeedbackAsync(
-            string adminUserId)
+        public async Task<List<FeedbackViewModel>> GetOtherFeedbackAsync(string adminUserId)
         {
             var list = new List<FeedbackViewModel>();
 
@@ -173,8 +171,7 @@ namespace CRUDAppUsingADO.DataAccess
         ORDER BY FeedbackId DESC;";
 
             await using SqlCommand cmd = new SqlCommand(query, con);
-            cmd.Parameters.Add("@AdminUserId", SqlDbType.NVarChar, 100).Value =
-                adminUserId;
+            cmd.Parameters.Add("@AdminUserId", SqlDbType.NVarChar, 100).Value = adminUserId;
 
             await using SqlDataReader reader = await cmd.ExecuteReaderAsync();
 
@@ -192,6 +189,52 @@ namespace CRUDAppUsingADO.DataAccess
             }
 
             return list;
+        }
+
+        // Add these methods inside your existing FeedbackDAL class.
+
+        public async Task<List<FeedbackViewModel>> GetAllFeedbackForSuperAdminAsync()
+        {
+            var feedbackList = new List<FeedbackViewModel>();
+            await using var con = new SqlConnection(_connectionString);
+            await con.OpenAsync();
+            const string query = @"
+        SELECT
+            FeedbackId,
+            UserId,
+            UserName,
+            Rating,
+            Description,
+            nBit
+        FROM dbo.UserFeedback
+        ORDER BY FeedbackId DESC;";
+            await using var cmd = new SqlCommand(query, con);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                feedbackList.Add(new FeedbackViewModel
+                {
+                    FeedbackId = Convert.ToInt32(reader["FeedbackId"]),
+                    UserId = reader["UserId"]?.ToString() ?? string.Empty,
+                    UserName = reader["UserName"]?.ToString() ?? string.Empty,
+                    Rating = Convert.ToInt32(reader["Rating"]),
+                    Description = reader["Description"]?.ToString() ?? string.Empty,
+                    nBit = Convert.ToBoolean(reader["nBit"])
+                });
+            }
+            return feedbackList;
+        }
+
+        public async Task<bool> SetFeedbackStatusAsync(int feedbackId, bool enabled)
+        {
+            await using var con = new SqlConnection(_connectionString);
+            await con.OpenAsync();
+            const string query = @"UPDATE dbo.UserFeedback SET nBit = @Enabled WHERE FeedbackId = @FeedbackId;";
+            await using var cmd = new SqlCommand(query, con);
+            cmd.Parameters.Add("@Enabled", SqlDbType.Bit).Value = enabled;
+            cmd.Parameters.Add("@FeedbackId", SqlDbType.Int).Value = feedbackId;
+            int rowsAffected = await cmd.ExecuteNonQueryAsync();
+            return rowsAffected > 0;
         }
     }
 }
