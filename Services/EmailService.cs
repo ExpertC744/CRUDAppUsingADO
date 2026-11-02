@@ -45,23 +45,69 @@ public class EmailService : IEmailService
         return message;
     }
 
+
     private async Task SendAsync(MimeMessage message)
     {
+        using var client = new SmtpClient();
+
         try
         {
-            using var client = new SmtpClient();
+            var host = _config["Smtp:Host"];
+            var port = int.Parse(_config["Smtp:Port"] ?? "587");
+            var username = _config["Smtp:Username"];
+            var password = _config["Smtp:Password"];
+
+            if (string.IsNullOrWhiteSpace(host) ||
+                string.IsNullOrWhiteSpace(username) ||
+                string.IsNullOrWhiteSpace(password))
+            {
+                throw new InvalidOperationException(
+                    "SMTP configuration is incomplete.");
+            }
+
             await client.ConnectAsync(
-                _config["Smtp:Host"],
-                int.Parse(_config["Smtp:Port"]!),
+                host,
+                port,
                 SecureSocketOptions.StartTls);
-            await client.AuthenticateAsync(_config["Smtp:Username"], _config["Smtp:Password"]);
-            await client.SendAsync(message);
+
+            await client.AuthenticateAsync(username, password);
+
+            var response = await client.SendAsync(message);
+
+            _log.LogInformation(
+                "Email sent. SMTP response: {Response}",
+                response);
+
             await client.DisconnectAsync(true);
         }
         catch (Exception ex)
         {
-            // Don't let email failures break the auth flow — log and continue
-            _log.LogError(ex, "Failed to send email to {To}", message.To);
+            _log.LogError(ex,
+                "Failed to send email to {To}",
+                message.To);
+
+            throw;
         }
     }
+
+
+    //private async Task SendAsync(MimeMessage message)
+    //{
+    //    try
+    //    {
+    //        using var client = new SmtpClient();
+    //        await client.ConnectAsync(
+    //            _config["Smtp:Host"],
+    //            int.Parse(_config["Smtp:Port"]!),
+    //            SecureSocketOptions.StartTls);
+    //        await client.AuthenticateAsync(_config["Smtp:Username"], _config["Smtp:Password"]);
+    //        await client.SendAsync(message);
+    //        await client.DisconnectAsync(true);
+    //    }
+    //    catch (Exception ex)
+    //    {
+    //        // Don't let email failures break the auth flow — log and continue
+    //        _log.LogError(ex, "Failed to send email to {To}", message.To);
+    //    }
+    //}
 }
