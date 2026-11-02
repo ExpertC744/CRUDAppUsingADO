@@ -338,6 +338,217 @@ namespace CRUDAppUsingADO.Controllers
             return Ok(tokens);
         }
 
+
+        // ================================================
+        // ADMIN FORGOT PASSWORD
+        // POST: /api/auth/admin/forgot-password
+        // ================================================
+        [HttpPost("admin/forgot-password")]
+        [AllowAnonymous]
+        public async Task<IActionResult> AdminForgotPassword([FromBody] ForgotPasswordDto dto)
+        {
+            return await SendAdminResetLink(dto, "Admin");
+        }
+
+
+        // ================================================
+        // SUPERADMIN FORGOT PASSWORD
+        // POST: /api/auth/superadmin/forgot-password
+        // ================================================
+        [HttpPost("superadmin/forgot-password")]
+        [AllowAnonymous]
+        public async Task<IActionResult> SuperAdminForgotPassword([FromBody] ForgotPasswordDto dto)
+        {
+            return await SendAdminResetLink(dto, "SuperAdmin");
+        }
+
+
+        // Shared forgot-password implementation
+        private async Task<IActionResult> SendAdminResetLink(ForgotPasswordDto dto, string requiredRole)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Please enter a valid email address."
+                });
+            }
+
+            const string genericMessage = "If the account is eligible, a password reset link has been sent.";
+
+            var user = await _userDal.GetUserByEmailAsync(dto.Email);
+
+            // Do not reveal whether an account exists or which role it has.
+            if (user == null || !user.IsActive || string.IsNullOrEmpty(user.PasswordHash) || !string.Equals(user.RoleName, requiredRole, StringComparison.OrdinalIgnoreCase))
+            {
+                return Ok(new
+                {
+                    success = true,
+                    message = genericMessage
+                });
+            }
+
+            // Generate a secure reset token (NOT a JWT access token).
+            var resetToken = _passwordService.GenerateSecureToken();
+
+            // Token expires after 30 minutes.
+            await _userDal.SavePasswordResetTokenAsync(user.UserId, resetToken, DateTime.UtcNow.AddMinutes(30));
+
+            var frontendUrl = _config["Frontend:Url"]?.TrimEnd('/');
+            var resetPath = _config["Frontend:ResetPasswordPath"];
+
+            if (string.IsNullOrWhiteSpace(frontendUrl) || string.IsNullOrWhiteSpace(resetPath))
+            {
+                _log.LogError("Password reset frontend URL is not configured.");
+
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "Unable to process the password reset request."
+                });
+            }
+
+            var resetLink = $"{frontendUrl}{resetPath}?token={Uri.EscapeDataString(resetToken)}";
+
+            //await _emailService.SendPasswordResetEmailAsync(user.Email, user.FullName, resetLink);
+            try
+            {
+                await _emailService.SendPasswordResetEmailAsync(
+                    user.Email,
+                    user.FullName,
+                    resetLink);
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(ex,
+                    "Admin password reset email failed.");
+
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "Email delivery failed. Please check SMTP configuration."
+                });
+            }
+
+            await _userDal.InsertAuditLogAsync(user.UserId, user.Email, $"{requiredRole}ForgotPasswordRequest", GetIp(), GetUserAgent(), true);
+
+            return Ok(new
+            {
+                success = true,
+                message = genericMessage
+            });
+        }
+
+        // ================================================
+        // ADMIN RESET PASSWORD
+        // POST: /api/auth/admin/reset-password
+        // ================================================
+        [HttpPost("admin/reset-password")]
+        [AllowAnonymous]
+        public async Task<IActionResult> AdminResetPassword([FromBody] ResetPasswordDto dto)
+        {
+            return await ResetAdminPassword(dto, "Admin");
+        }
+
+
+        // ================================================
+        // SUPERADMIN RESET PASSWORD
+        // POST: /api/auth/superadmin/reset-password
+        // ================================================
+        [HttpPost("superadmin/reset-password")]
+        [AllowAnonymous]
+        public async Task<IActionResult> SuperAdminResetPassword([FromBody] ResetPasswordDto dto)
+        {
+            return await ResetAdminPassword(dto, "SuperAdmin");
+        }
+
+
+        // Shared reset-password implementation
+        private async Task<IActionResult> ResetAdminPassword(ResetPasswordDto dto, string requiredRole)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Invalid input."
+                });
+            }
+
+            // Validate the reset token saved in PasswordResetTokens.
+            var (userId, expiresAt, isUsed) =
+                await _userDal.ValidatePasswordResetTokenAsync(dto.Token);
+
+            if (userId == null)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Invalid reset token."
+                });
+            }
+
+            if (isUsed)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "This reset link has already been used."
+                });
+            }
+
+            if (!expiresAt.HasValue || expiresAt.Value <= DateTime.UtcNow)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "This reset link has expired. Please request a new one."
+                });
+            }
+
+            // Check the role belonging to the token's user.
+            var user = await _userDal.GetUserByIdAsync(userId.Value);
+
+            if (user == null ||
+                !user.IsActive ||
+                !string.Equals(
+                    user.RoleName,
+                    requiredRole,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Invalid reset token."
+                });
+            }
+
+            // Hash the new password using your existing password service.
+            var (hash, salt) =
+                _passwordService.HashPassword(dto.NewPassword);
+
+            await _userDal.ResetPasswordAsync(
+                userId.Value,
+                hash,
+                salt,
+                dto.Token);
+
+            await _userDal.InsertAuditLogAsync(
+                userId,
+                user.Email,
+                $"{requiredRole}PasswordReset",
+                GetIp(),
+                GetUserAgent(),
+                true);
+
+            return Ok(new
+            {
+                success = true,
+                message = "Password reset successfully. Please log in with your new password."
+            });
+        }
+
         // ════════════════════════════════════════════════════════
         // POST /api/auth/forgot-password
         // ════════════════════════════════════════════════════════
