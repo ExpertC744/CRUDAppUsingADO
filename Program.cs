@@ -47,6 +47,7 @@ builder.Services.AddScoped<IPasswordService, PasswordService>();
 builder.Services.AddScoped<IGoogleAuthService, GoogleAuthService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<AdminProfileDAL>();
+builder.Services.AddScoped<AdminEventDAL>();
 builder.Services.AddHttpContextAccessor();
 
 // ==========================================
