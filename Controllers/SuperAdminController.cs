@@ -13,13 +13,13 @@ namespace CRUDAppUsingADO.Controllers
     {
         private readonly FeedbackDAL _feedbackDAL;
         private readonly AdminProfileDAL _adminProfileDAL;
+        private readonly AdminEventDAL _adminEventDAL;
 
-        public SuperAdminController(
-            FeedbackDAL feedbackDAL,
-            AdminProfileDAL adminProfileDAL)
+        public SuperAdminController(FeedbackDAL feedbackDAL, AdminProfileDAL adminProfileDAL, AdminEventDAL adminEventDAL)
         {
             _feedbackDAL = feedbackDAL;
             _adminProfileDAL = adminProfileDAL;
+            _adminEventDAL = adminEventDAL;
         }
 
         // GET: api/superadmin/dashboard
@@ -38,8 +38,7 @@ namespace CRUDAppUsingADO.Controllers
         [HttpGet("feedback")]
         public async Task<IActionResult> GetAllFeedback()
         {
-            var feedbackList =
-                await _feedbackDAL.GetAllFeedbackForSuperAdminAsync();
+            var feedbackList = await _feedbackDAL.GetAllFeedbackForSuperAdminAsync();
 
             return Ok(new
             {
@@ -51,9 +50,7 @@ namespace CRUDAppUsingADO.Controllers
 
         // PATCH: api/superadmin/feedback/5/status
         [HttpPatch("feedback/{feedbackId:int}/status")]
-        public async Task<IActionResult> SetFeedbackStatus(
-            int feedbackId,
-            [FromBody] FeedbackStatusDto dto)
+        public async Task<IActionResult> SetFeedbackStatus(int feedbackId, [FromBody] FeedbackStatusDto dto)
         {
             if (feedbackId <= 0)
             {
@@ -67,10 +64,7 @@ namespace CRUDAppUsingADO.Controllers
             if (dto == null)
                 return BadRequest(new { message = "Invalid request." });
 
-            bool updated = await _feedbackDAL.SetFeedbackStatusAsync(
-                feedbackId,
-                dto.nBit
-            );
+            bool updated = await _feedbackDAL.SetFeedbackStatusAsync(feedbackId, dto.nBit);
 
             if (!updated)
             {
@@ -111,9 +105,7 @@ namespace CRUDAppUsingADO.Controllers
         // PATCH: api/superadmin/admins/{userId}/status
         // Body: { "nBit": true } or { "nBit": false }
         [HttpPatch("admins/{userId:guid}/status")]
-        public async Task<IActionResult> UpdateAdminStatus(
-            Guid userId,
-            [FromBody] AdminStatusDto dto)
+        public async Task<IActionResult> UpdateAdminStatus(Guid userId, [FromBody] AdminStatusDto dto)
         {
             if (userId == Guid.Empty)
             {
@@ -155,6 +147,31 @@ namespace CRUDAppUsingADO.Controllers
                 message = dto.nBit
                     ? "Admin enabled successfully."
                     : "Admin disabled successfully."
+            });
+        }
+
+        // PATCH: api/superadmin/events/5/approval
+        [HttpPatch("events/{eventId:int}/approval")]
+        public async Task<IActionResult> UpdateEventApproval(int eventId, [FromBody] AdminEventApprovalDto dto)
+        {
+            if (eventId <= 0)
+                return BadRequest(new { message = "Invalid Event ID." });
+
+            bool updated = await _adminEventDAL.UpdateSuperAdminStatusAsync(
+                eventId,
+                dto.nSABit);
+
+            if (!updated)
+                return NotFound(new { message = "Event not found." });
+
+            return Ok(new
+            {
+                success = true,
+                eventId,
+                nSABit = dto.nSABit,
+                message = dto.nSABit
+                    ? "Event enabled by SuperAdmin."
+                    : "Event disabled by SuperAdmin."
             });
         }
     }
