@@ -15,8 +15,7 @@ namespace CRUDAppUsingADO.DataAccess
 
         private SqlConnection GetConnection()
         {
-            return new SqlConnection(
-                _configuration.GetConnectionString("DefaultConnection"));
+            return new SqlConnection(_configuration.GetConnectionString("DefaultConnection"));
         }
 
         // ============================================
