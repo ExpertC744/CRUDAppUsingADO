@@ -1,21 +1,137 @@
-using ClosedXML.Excel;
 using CRUDAppUsingADO.DataAccess;
 using CRUDAppUsingADO.Models.Bulk;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
+
 namespace CRUDAppUsingADO.Controllers;
-[ApiController,Route("api/admin"),Authorize(Roles="Admin")]
-public sealed class BulkCardController(BulkCardDAL dal,IWebHostEnvironment env):ControllerBase
+
+[ApiController]
+[Route("api/admin")]
+[Authorize(Roles = "Admin")]
+public sealed class BulkCardController(
+    BulkCardDAL dal,
+    IWebHostEnvironment env) : ControllerBase
 {
- private bool AdminId(out Guid id){var c=User.FindFirst(ClaimTypes.NameIdentifier)??User.FindFirst("sub");return Guid.TryParse(c?.Value,out id);}
- [HttpPost("recipients/import"),RequestSizeLimit(20_000_000),Consumes("multipart/form-data")]
- public async Task<IActionResult> Import([FromForm]IFormFile file,CancellationToken ct){if(!AdminId(out var admin))return Unauthorized();if(file==null||file.Length==0)return BadRequest("Upload an Excel file.");var ext=Path.GetExtension(file.FileName).ToLowerInvariant();if(ext!=".xlsx")return BadRequest("Only .xlsx files are supported.");if(file.Length>20_000_000)return BadRequest("Maximum file size is 20 MB.");var rows=new List<RecipientRow>();var errors=new List<string>();using var stream=file.OpenReadStream();using var wb=new XLWorkbook(stream);var ws=wb.Worksheets.FirstOrDefault();if(ws==null)return BadRequest("Excel worksheet not found.");var headers=ws.Row(1).CellsUsed().ToDictionary(c=>c.GetString().Trim(),c=>c.Address.ColumnNumber,StringComparer.OrdinalIgnoreCase);foreach(var required in new[]{"Name"})if(!headers.ContainsKey(required))return BadRequest($"Missing Excel column: {required}");string? V(IXLRow r,string h)=>headers.TryGetValue(h,out var col)?r.Cell(col).GetString().Trim():null;
-  for(int n=2;n<=ws.LastRowUsed()?.RowNumber();n++){var row=ws.Row(n);var name=V(row,"Name")??"";var email=V(row,"Email");var mobile=V(row,"Mobile");if(string.IsNullOrWhiteSpace(name)|| (string.IsNullOrWhiteSpace(email)&&string.IsNullOrWhiteSpace(mobile))){errors.Add($"Row {n}: Name and at least one contact (Email/Mobile) are required.");continue;}if(!string.IsNullOrWhiteSpace(email)&&!new System.ComponentModel.DataAnnotations.EmailAddressAttribute().IsValid(email)){errors.Add($"Row {n}: Invalid email.");continue;}mobile=string.IsNullOrWhiteSpace(mobile)?null:new string(mobile.Where(char.IsDigit).ToArray());if(mobile?.Length is <10 or >15){errors.Add($"Row {n}: Mobile must contain 10 to 15 digits.");continue;}rows.Add(new RecipientRow{FullName=name,Email=string.IsNullOrWhiteSpace(email)?null:email,Mobile=mobile,Text1=V(row,"Text1"),Text2=V(row,"Text2"),Text3=V(row,"Text3"),Text4=V(row,"Text4")});}
-  var result=await dal.ImportRecipientsAsync(admin,rows,Path.GetFileName(file.FileName),ct);return Ok(new RecipientImportResult{Inserted=result.inserted,Duplicates=result.duplicates,Invalid=errors.Count,Errors=errors});}
- [HttpGet("recipients")] public async Task<IActionResult> Recipients([FromQuery]string? search=null,[FromQuery]int page=1,[FromQuery]int pageSize=100,CancellationToken ct=default){if(!AdminId(out var id))return Unauthorized();page=Math.Max(1,page);pageSize=Math.Clamp(pageSize,1,500);var dt=await dal.GetRecipientsAsync(id,search,page,pageSize,ct);return Ok(dt);}
- [HttpPatch("recipients/{id:long}/status")] public async Task<IActionResult> Status(long id,[FromBody]RecipientStatusDto dto,CancellationToken ct){if(!AdminId(out var admin))return Unauthorized();return await dal.SetRecipientStatusAsync(admin,id,dto.IsActive,ct)?Ok():NotFound();}
- [HttpPost("cards"),Consumes("multipart/form-data"),RequestSizeLimit(10_000_000)] public async Task<IActionResult> SaveCard([FromForm]CardDesignSaveDto dto,CancellationToken ct){if(!AdminId(out var admin))return Unauthorized();if(!ModelState.IsValid)return ValidationProblem(ModelState);if(dto.Image.Length==0||dto.Image.Length>10_000_000)return BadRequest("Image is required and must be under 10 MB.");var ext=Path.GetExtension(dto.Image.FileName).ToLowerInvariant();if(ext is not(".png" or ".jpg" or ".jpeg"))return BadRequest("Only PNG/JPG images are accepted.");var dir=Path.Combine(env.WebRootPath??Path.Combine(env.ContentRootPath,"wwwroot"),"uploads","card-designs");Directory.CreateDirectory(dir);var file=Guid.NewGuid().ToString("N")+ext;var path=Path.Combine(dir,file);await using(var fs=System.IO.File.Create(path))await dto.Image.CopyToAsync(fs,ct);try{var id=await dal.SaveDesignAsync(admin,dto.DesignName,$"/uploads/card-designs/{file}",dto.CanvasWidth,dto.CanvasHeight,dto.CanvasJson,ct);return Ok(new{cardDesignId=id,imageUrl=$"/uploads/card-designs/{file}"});}catch{System.IO.File.Delete(path);throw;}}
- [HttpPost("bulk-jobs")] public async Task<IActionResult> CreateJob([FromBody]BulkJobCreateDto dto,CancellationToken ct){if(!AdminId(out var admin))return Unauthorized();if(!ModelState.IsValid)return ValidationProblem(ModelState);if(dto.OutputType is not("Image" or "PDF"))return BadRequest("OutputType must be Image or PDF.");if(dto.Channels is not("Email" or "WhatsApp" or "Both"))return BadRequest("Invalid Channels.");try{var id=await dal.CreateJobAsync(admin,dto,ct);return Accepted(new{jobId=id,status=dto.ScheduledAt>DateTimeOffset.UtcNow?"Scheduled":"Queued",statusUrl=$"/api/admin/bulk-jobs/{id}"});}catch(InvalidOperationException ex){return BadRequest(ex.Message);}}
- [HttpGet("bulk-jobs/{id:guid}")] public async Task<IActionResult> GetJob(Guid id,CancellationToken ct){if(!AdminId(out var admin))return Unauthorized();var job=await dal.GetJobAsync(admin,id,ct);return job==null?NotFound():Ok(job);}
+    private bool AdminId(out Guid id)
+    {
+        var c = User.FindFirst(ClaimTypes.NameIdentifier)
+                ?? User.FindFirst("sub");
+
+        return Guid.TryParse(c?.Value, out id);
+    }
+
+    // SAVE CARD DESIGN
+    [HttpPost("cards")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(10_000_000)]
+    public async Task<IActionResult> SaveCard(
+        [FromForm] CardDesignSaveDto dto,
+        CancellationToken ct)
+    {
+        if (!AdminId(out var admin))
+            return Unauthorized();
+
+        if (!ModelState.IsValid)
+            return ValidationProblem(ModelState);
+
+        if (dto.Image == null ||
+            dto.Image.Length == 0 ||
+            dto.Image.Length > 10_000_000)
+            return BadRequest("Image is required and must be under 10 MB.");
+
+        var ext = Path.GetExtension(dto.Image.FileName).ToLowerInvariant();
+
+        if (ext is not (".png" or ".jpg" or ".jpeg"))
+            return BadRequest("Only PNG/JPG images are accepted.");
+
+        var dir = Path.Combine(
+            env.WebRootPath ?? Path.Combine(env.ContentRootPath, "wwwroot"),
+            "uploads",
+            "card-designs");
+
+        Directory.CreateDirectory(dir);
+
+        var file = Guid.NewGuid().ToString("N") + ext;
+        var path = Path.Combine(dir, file);
+
+        await using (var fs = System.IO.File.Create(path))
+        {
+            await dto.Image.CopyToAsync(fs, ct);
+        }
+
+        try
+        {
+            var id = await dal.SaveDesignAsync(
+                admin,
+                dto.DesignName,
+                $"/uploads/card-designs/{file}",
+                dto.CanvasWidth,
+                dto.CanvasHeight,
+                dto.CanvasJson,
+                ct);
+
+            return Ok(new
+            {
+                cardDesignId = id,
+                imageUrl = $"/uploads/card-designs/{file}"
+            });
+        }
+        catch
+        {
+            System.IO.File.Delete(path);
+            throw;
+        }
+    }
+
+    // CREATE BULK JOB
+    [HttpPost("bulk-jobs")]
+    public async Task<IActionResult> CreateJob(
+        [FromBody] BulkJobCreateDto dto,
+        CancellationToken ct)
+    {
+        if (!AdminId(out var admin))
+            return Unauthorized();
+
+        if (!ModelState.IsValid)
+            return ValidationProblem(ModelState);
+
+        if (dto.OutputType is not ("Image" or "PDF"))
+            return BadRequest("OutputType must be Image or PDF.");
+
+        if (dto.Channels is not ("Email" or "WhatsApp" or "Both"))
+            return BadRequest("Invalid Channels.");
+
+        try
+        {
+            var id = await dal.CreateJobAsync(admin, dto, ct);
+
+            return Accepted(new
+            {
+                jobId = id,
+                status = dto.ScheduledAt > DateTimeOffset.UtcNow
+                    ? "Scheduled"
+                    : "Queued",
+                statusUrl = $"/api/admin/bulk-jobs/{id}"
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    // GET BULK JOB STATUS
+    [HttpGet("bulk-jobs/{id:guid}")]
+    public async Task<IActionResult> GetJob(
+        Guid id,
+        CancellationToken ct)
+    {
+        if (!AdminId(out var admin))
+            return Unauthorized();
+
+        var job = await dal.GetJobAsync(admin, id, ct);
+
+        return job == null ? NotFound() : Ok(job);
+    }
 }
