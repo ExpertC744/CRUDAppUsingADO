@@ -49,6 +49,7 @@ builder.Services.AddScoped<AdminProfileDAL>();
 builder.Services.AddScoped<AdminEventDAL>();
 builder.Services.AddScoped<TemplateManagementDAL>();
 builder.Services.AddScoped<BulkCardDAL>();
+builder.Services.AddScoped<RecipientManagementDAL>();
 builder.Services.AddHttpContextAccessor();
 
 // ==========================================
