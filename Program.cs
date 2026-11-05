@@ -1,10 +1,9 @@
-﻿
+﻿using Microsoft.OpenApi.Models;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
-using Microsoft.OpenApi.Models;
 using CRUDAppUsingADO.DataAccess;
 using CRUDAppUsingADO.Middleware;
 using CRUDAppUsingADO.Services;
@@ -49,6 +48,7 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<AdminProfileDAL>();
 builder.Services.AddScoped<AdminEventDAL>();
 builder.Services.AddScoped<TemplateManagementDAL>();
+builder.Services.AddScoped<BulkCardDAL>();
 builder.Services.AddHttpContextAccessor();
 
 // ==========================================
