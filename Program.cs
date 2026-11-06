@@ -9,6 +9,7 @@ using CRUDAppUsingADO.Middleware;
 using CRUDAppUsingADO.Services;
 using Serilog;
 using System.Text;
+using CRUDAppUsingADO.Models.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -50,6 +51,11 @@ builder.Services.AddScoped<AdminEventDAL>();
 builder.Services.AddScoped<TemplateManagementDAL>();
 builder.Services.AddScoped<BulkCardDAL>();
 builder.Services.AddScoped<RecipientManagementDAL>();
+builder.Services.Configure<BhashSmsSettings>(builder.Configuration.GetSection("BhashSMS"));
+builder.Services.Configure<WhatsAppSettings>(builder.Configuration.GetSection("WhatsApp"));
+builder.Services.Configure<SendGridSettings>(builder.Configuration.GetSection("SendGrid"));
+builder.Services.AddScoped<WhatsAppTemplateSelectionDAL>();
+
 builder.Services.AddHttpContextAccessor();
 
 // ==========================================
