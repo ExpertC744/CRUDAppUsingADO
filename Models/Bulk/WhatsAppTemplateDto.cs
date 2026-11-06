@@ -1,4 +1,5 @@
-﻿namespace CRUDAppUsingADO.Models.Bulk;
+﻿
+namespace CRUDAppUsingADO.Models.Bulk;
 
 public sealed class WhatsAppTemplateDto
 {
