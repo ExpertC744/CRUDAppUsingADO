@@ -9,27 +9,13 @@ namespace CRUDAppUsingADO.Controllers;
 [ApiController]
 [Route("api/admin")]
 [Authorize(Roles = "Admin")]
-public sealed class BulkCardController(
-    BulkCardDAL dal,
-    IWebHostEnvironment env) : ControllerBase
+public sealed class BulkCardController(BulkCardDAL dal, IWebHostEnvironment env) : ControllerBase
 {
     private bool AdminId(out Guid id)
     {
-        var claim = User.FindFirst(ClaimTypes.NameIdentifier)
-                    ?? User.FindFirst("sub");
-
+        var claim = User.FindFirst(ClaimTypes.NameIdentifier) ?? User.FindFirst("sub");
         return Guid.TryParse(claim?.Value, out id);
     }
-
-    //private static bool IsValidFormat(string? value)
-    //{
-    //    return value is "PNG" or "JPG" or "PDF";
-    //}
-
-    //private static bool IsValidTemplateType(string? value)
-    //{
-    //    return value is "Invitation" or "Greeting" or "Certificate";
-    //}
 
     private static string NormalizeFormat(string? value)
     {
@@ -53,10 +39,7 @@ public sealed class BulkCardController(
         };
     }
 
-    private static async Task<bool> HasValidFileSignatureAsync(
-        IFormFile file,
-        string format,
-        CancellationToken ct)
+    private static async Task<bool> HasValidFileSignatureAsync(IFormFile file, string format, CancellationToken ct)
     {
         await using var stream = file.OpenReadStream();
 
@@ -124,8 +107,7 @@ public sealed class BulkCardController(
             dto.Image.Length == 0 ||
             dto.Image.Length > 10_000_000)
         {
-            return BadRequest(
-                "A source file is required and must be under 10 MB.");
+            return BadRequest("A source file is required and must be under 10 MB.");
         }
 
         var ext = Path.GetExtension(dto.Image.FileName)
@@ -143,23 +125,17 @@ public sealed class BulkCardController(
             return BadRequest("Only PNG, JPG and PDF files are accepted.");
 
         if (actualFormat != uploadFormat)
-            return BadRequest(
-                "The selected UploadFormat does not match the uploaded file.");
+            return BadRequest("The selected UploadFormat does not match the uploaded file.");
 
         if (!await HasValidFileSignatureAsync(
                 dto.Image, actualFormat, ct))
         {
-            return BadRequest(
-                "The uploaded file content does not match its file format.");
+            return BadRequest("The uploaded file content does not match its file format.");
         }
 
-        var webRoot = env.WebRootPath
-                      ?? Path.Combine(env.ContentRootPath, "wwwroot");
+        var webRoot = env.WebRootPath ?? Path.Combine(env.ContentRootPath, "wwwroot");
 
-        var dir = Path.Combine(
-            webRoot,
-            "uploads",
-            "card-designs");
+        var dir = Path.Combine(webRoot, "uploads", "card-designs");
 
         Directory.CreateDirectory(dir);
 
@@ -175,11 +151,7 @@ public sealed class BulkCardController(
         var file = Guid.NewGuid().ToString("N") + storedExtension;
         var path = Path.Combine(dir, file);
 
-        await using (var fs = new FileStream(
-            path,
-            FileMode.CreateNew,
-            FileAccess.Write,
-            FileShare.None))
+        await using (var fs = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None))
         {
             await dto.Image.CopyToAsync(fs, ct);
         }
