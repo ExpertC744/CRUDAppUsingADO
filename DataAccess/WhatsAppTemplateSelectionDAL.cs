@@ -1,4 +1,5 @@
-﻿using CRUDAppUsingADO.Models.Bulk;
+﻿
+using CRUDAppUsingADO.Models.Bulk;
 using Microsoft.Data.SqlClient;
 using System.Data;
 
@@ -29,6 +30,22 @@ public sealed class WhatsAppTemplateSelectionDAL(IConfiguration config)
           AND (@SendType IS NULL OR t.SendType = @SendType)
         ORDER BY t.TemplateName;";
 
+    private const string SelectByIdSql = @"
+        SELECT
+            t.TemplateId,
+            t.TemplateName,
+            t.TemplateType,
+            t.SendType,
+            t.Message,
+            t.WithUserName,
+            t.NoOfParameters
+        FROM dbo.tblTemplates t
+        INNER JOIN dbo.tblTemplateAdmin a
+            ON a.TemplateAdminId = t.TemplateAdminId
+        WHERE t.TemplateId = @TemplateId
+          AND t.nBit = 1
+          AND a.nBit = 1;";
+
     public async Task<List<WhatsAppTemplateDto>> GetTemplatesAsync(
         int? templateType,
         int? sendType,
@@ -51,21 +68,7 @@ public sealed class WhatsAppTemplateSelectionDAL(IConfiguration config)
 
         while (await reader.ReadAsync(ct))
         {
-            var templateTypeValue = Convert.ToInt32(reader["TemplateType"]);
-            var sendTypeValue = Convert.ToInt32(reader["SendType"]);
-
-            result.Add(new WhatsAppTemplateDto
-            {
-                TemplateId = Convert.ToInt64(reader["TemplateId"]),
-                TemplateName = Convert.ToString(reader["TemplateName"]) ?? "",
-                TemplateType = templateTypeValue,
-                TemplateTypeName = GetTemplateTypeName(templateTypeValue),
-                SendType = sendTypeValue,
-                SendTypeName = GetSendTypeName(sendTypeValue),
-                Message = Convert.ToString(reader["Message"]) ?? "",
-                WithUserName = Convert.ToBoolean(reader["WithUserName"]),
-                NoOfParameters = Convert.ToInt32(reader["NoOfParameters"])
-            });
+            result.Add(MapTemplate(reader));
         }
 
         return result;
@@ -75,9 +78,49 @@ public sealed class WhatsAppTemplateSelectionDAL(IConfiguration config)
         long id,
         CancellationToken ct)
     {
-        var templates = await GetTemplatesAsync(null, null, ct);
+        await using var cn = new SqlConnection(cs);
+        await cn.OpenAsync(ct);
 
-        return templates.FirstOrDefault(x => x.TemplateId == id);
+        await using var cmd = new SqlCommand(SelectByIdSql, cn);
+
+        cmd.Parameters.Add("@TemplateId", SqlDbType.BigInt).Value = id;
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+        if (!await reader.ReadAsync(ct))
+        {
+            return null;
+        }
+
+        return MapTemplate(reader);
+    }
+
+    private static WhatsAppTemplateDto MapTemplate(SqlDataReader reader)
+    {
+        int templateType = Convert.ToInt32(reader["TemplateType"]);
+        int sendType = Convert.ToInt32(reader["SendType"]);
+
+        return new WhatsAppTemplateDto
+        {
+            TemplateId = Convert.ToInt64(reader["TemplateId"]),
+
+            TemplateName =
+                Convert.ToString(reader["TemplateName"]) ?? "",
+
+            TemplateType = templateType,
+            TemplateTypeName = GetTemplateTypeName(templateType),
+
+            SendType = sendType,
+            SendTypeName = GetSendTypeName(sendType),
+
+            Message = Convert.ToString(reader["Message"]) ?? "",
+
+            WithUserName =
+                Convert.ToBoolean(reader["WithUserName"]),
+
+            NoOfParameters =
+                Convert.ToInt32(reader["NoOfParameters"])
+        };
     }
 
     private static string GetTemplateTypeName(int value)

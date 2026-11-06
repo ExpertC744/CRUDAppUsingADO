@@ -76,14 +76,19 @@ public sealed class BulkJobCreateDto
 
     public long? TemplateId { get; set; }
 
-    // Existing BulkJobs.OutputType: Image or PDF.
-    [Required]
+    // Legacy column: Image or PDF.
+    // The controller derives this from OutputFormat.
     public string OutputType { get; set; } = "Image";
+
+    // User selects this when creating the bulk job.
+    [Required]
+    public string OutputFormat { get; set; } = "PNG";
 
     [Required]
     public string Channels { get; set; } = "Both";
 
     [Required]
+    [MinLength(1, ErrorMessage = "Select at least one recipient.")]
     public List<long> RecipientIds { get; set; } = [];
 
     public Dictionary<string, string> ParameterValues { get; set; } = [];
