@@ -63,6 +63,7 @@ builder.Services.AddScoped<BulkJobProcessor>();
 // Background worker
 builder.Services.AddHostedService<BulkJobBackgroundService>();
 
+builder.Services.AddScoped<EventRegistrationDAL>();
 builder.Services.AddHttpContextAccessor();
 
 // ==========================================

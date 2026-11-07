@@ -407,4 +407,40 @@ public class AdminController : ControllerBase
     }
 
     #endregion
+
+
+    [HttpGet("events/{eventId:int}/registrations")]
+    public async Task<IActionResult> GetEventRegistrations(int eventId, [FromServices] EventRegistrationDAL registrationDAL)
+    {
+        if (!TryGetUserId(out Guid adminUserId))
+            return Unauthorized();
+
+        if (!await CanAdminAccessAsync(adminUserId))
+            return StatusCode(403, new
+            {
+                message = "Admin account disabled."
+            });
+
+        var eventDetails =
+            await _eventDAL.GetByIdAsync(eventId, adminUserId);
+
+        if (eventDetails == null)
+            return NotFound(new
+            {
+                message = "Event not found or you do not own this event."
+            });
+
+        var registrations =
+            await registrationDAL.GetEventRegistrationsAsync(eventId);
+
+        return Ok(new
+        {
+            success = true,
+            eventId,
+            eventName = eventDetails.EventTitle,
+            totalRecords = registrations.Count,
+            registrations
+        });
+    }
+
 }

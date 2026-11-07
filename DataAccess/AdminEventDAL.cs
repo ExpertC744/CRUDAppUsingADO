@@ -347,5 +347,62 @@ namespace CRUDAppUsingADO.DataAccess
             await con.OpenAsync();
             return Convert.ToInt32(await cmd.ExecuteScalarAsync()) > 0;
         }
+
+
+        public async Task<List<AdminEventResponseDto>> GetPublicEventsAsync()
+        {
+            var list = new List<AdminEventResponseDto>();
+
+            using var con = GetConnection();
+
+            const string sql = @"
+        SELECT *
+        FROM dbo.AdminEvents
+        WHERE nBit = 1
+          AND nSABit = 1
+          AND AdvStartDate <= CAST(GETDATE() AS DATE)
+          AND AdvCompletionDate >= CAST(GETDATE() AS DATE)
+          AND EventCompletionDate >= CAST(GETDATE() AS DATE)
+          AND EventCompletionDate >= EventStartDate
+        ORDER BY EventStartDate ASC;";
+
+            using var cmd = new SqlCommand(sql, con);
+
+            await con.OpenAsync();
+
+            using var reader = await cmd.ExecuteReaderAsync();
+
+            while (await reader.ReadAsync())
+                list.Add(Map(reader));
+
+            return list;
+        }
+
+        public async Task<AdminEventResponseDto?> GetPublicEventByIdAsync(int eventId)
+        {
+            using var con = GetConnection();
+
+            const string sql = @"
+        SELECT *
+        FROM dbo.AdminEvents
+        WHERE EventId = @EventId
+          AND nBit = 1
+          AND nSABit = 1
+          AND AdvStartDate <= CAST(GETDATE() AS DATE)
+          AND AdvCompletionDate >= CAST(GETDATE() AS DATE)
+          AND EventCompletionDate >= CAST(GETDATE() AS DATE)
+          AND EventCompletionDate >= EventStartDate;";
+
+            using var cmd = new SqlCommand(sql, con);
+
+            cmd.Parameters.Add("@EventId", SqlDbType.Int).Value = eventId;
+
+            await con.OpenAsync();
+
+            using var reader = await cmd.ExecuteReaderAsync();
+
+            return await reader.ReadAsync() ? Map(reader) : null;
+        }
+
     }
 }
