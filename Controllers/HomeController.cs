@@ -42,6 +42,8 @@
 
 
 using CRUDAppUsingADO.DataAccess;
+using CRUDAppUsingADO.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CRUDAppUsingADO.Controllers
@@ -52,15 +54,17 @@ namespace CRUDAppUsingADO.Controllers
     {
         private readonly FeedbackDAL _feedbackDAL;
         private readonly AdminEventDAL _eventDAL;
+        private readonly SubscriptionDAL _subscriptionDal;
 
         private const string AdminUserId = "ADMIN_USER_ID";
 
         public HomeController(
             FeedbackDAL feedbackDAL,
-            AdminEventDAL eventDAL)
+            AdminEventDAL eventDAL, SubscriptionDAL subscriptionDal)
         {
             _feedbackDAL = feedbackDAL;
             _eventDAL = eventDAL;
+            _subscriptionDal = subscriptionDal;
         }
 
         // GET: api/home/feedback
@@ -79,6 +83,38 @@ namespace CRUDAppUsingADO.Controllers
                 otherFeedback
             });
         }
+
+        [HttpGet("plans")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetPlans()
+        {
+            var plans = await _subscriptionDal.GetPlansAsync(true);
+
+            return Ok(new ApiResponse<List<SubscriptionPlanDto>>
+            {
+                Success = true,
+                Message = "Available plans retrieved successfully.",
+                Data = plans
+            });
+        }
+
+        [HttpGet("plans/{id:int}")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetPlan(int id)
+        {
+            var plan = await _subscriptionDal.GetPlanAsync(id);
+
+            if (plan == null || !plan.IsActive)
+                return NotFound(new { success = false, message = "Plan not found." });
+
+            return Ok(new ApiResponse<SubscriptionPlanDto>
+            {
+                Success = true,
+                Message = "Plan retrieved successfully.",
+                Data = plan
+            });
+        }
+
 
         // GET: api/home/events
         [HttpGet("events")]

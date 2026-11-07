@@ -46,12 +46,32 @@ namespace CRUDAppUsingADO.Controllers
                     message = "Individual registration must have exactly one participant."
                 });
 
-            if (dto.RegistrationType == "Group" &&
-                string.IsNullOrWhiteSpace(dto.GroupName))
-                return BadRequest(new
+            if (dto.RegistrationType == "Group")
+            {
+                if (string.IsNullOrWhiteSpace(dto.GroupName))
                 {
-                    message = "Group name is required."
-                });
+                    return BadRequest(new
+                    {
+                        message = "Group name is required."
+                    });
+                }
+
+                if (string.IsNullOrWhiteSpace(dto.TeamLeadName))
+                {
+                    return BadRequest(new
+                    {
+                        message = "Team lead name is required."
+                    });
+                }
+
+                if (dto.Participants.Count < 2)
+                {
+                    return BadRequest(new
+                    {
+                        message = "Group registration must contain at least 2 participants."
+                    });
+                }
+            }
 
             if (dto.Participants.Count == 0 ||
                 dto.Participants.Count > 30)
