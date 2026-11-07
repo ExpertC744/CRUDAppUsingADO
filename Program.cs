@@ -55,6 +55,13 @@ builder.Services.Configure<BhashSmsSettings>(builder.Configuration.GetSection("B
 builder.Services.Configure<WhatsAppSettings>(builder.Configuration.GetSection("WhatsApp"));
 builder.Services.Configure<SendGridSettings>(builder.Configuration.GetSection("SendGrid"));
 builder.Services.AddScoped<WhatsAppTemplateSelectionDAL>();
+// Bulk job processing
+builder.Services.AddScoped<CardImageRenderer>();
+builder.Services.AddScoped<BhashWhatsAppService>();
+builder.Services.AddScoped<BulkJobProcessor>();
+
+// Background worker
+builder.Services.AddHostedService<BulkJobBackgroundService>();
 
 builder.Services.AddHttpContextAccessor();
 
