@@ -14,6 +14,20 @@ namespace CRUDAppUsingADO.Controllers
     [Route("api/auth")]
     public class AuthController : ControllerBase
     {
+
+        [HttpGet("health")]
+        public IActionResult Health()
+        {
+            return Ok(new
+            {
+                success = true,
+                message = "EventCert API is running",
+                environment = Environment.GetEnvironmentVariable(
+                    "ASPNETCORE_ENVIRONMENT")
+            });
+        }
+
+
         private readonly UserDAL _userDal;
         private readonly TokenDAL _tokenDal;
         private readonly IJwtService _jwtService;
@@ -37,6 +51,8 @@ namespace CRUDAppUsingADO.Controllers
             _config = config;
             _log = log;
         }
+
+        
 
         // ════════════════════════════════════════════════════════
         // POST /api/auth/register
