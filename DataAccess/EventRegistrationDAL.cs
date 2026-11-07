@@ -20,45 +20,49 @@ namespace CRUDAppUsingADO.DataAccess
                 _configuration.GetConnectionString("DefaultConnection"));
         }
 
-        public async Task<int> SaveRegistrationAsync(
-            EventRegistrationDto dto,
-            List<string?> imagePaths,
-            decimal entryFee)
+
+        public async Task<int> SaveRegistrationAsync(EventRegistrationDto dto, List<string?> imagePaths, decimal entryFee)
         {
+            if (dto.Participants == null || dto.Participants.Count == 0)
+                throw new InvalidOperationException("At least one participant is required.");
+
+            if (imagePaths.Count != dto.Participants.Count)
+                throw new InvalidOperationException("Participant image count mismatch.");
+
             using var con = GetConnection();
 
             await con.OpenAsync();
 
-            using var transaction = con.BeginTransaction();
+            using var transaction = await con.BeginTransactionAsync();
 
             try
             {
                 const string registrationSql = @"
-                    INSERT INTO dbo.EventRegistrations
-                    (
-                        EventId,
-                        RegistrationType,
-                        GroupName,
-                        TeamLeadName,
-                        TotalParticipants,
-                        TotalAmount
-                    )
-                    VALUES
-                    (
-                        @EventId,
-                        @RegistrationType,
-                        @GroupName,
-                        @TeamLeadName,
-                        @TotalParticipants,
-                        @TotalAmount
-                    );
+            INSERT INTO dbo.EventRegistrations
+            (
+                EventId,
+                RegistrationType,
+                GroupName,
+                TeamLeadName,
+                TotalParticipants,
+                TotalAmount
+            )
+            VALUES
+            (
+                @EventId,
+                @RegistrationType,
+                @GroupName,
+                @TeamLeadName,
+                @TotalParticipants,
+                @TotalAmount
+            );
 
-                    SELECT CAST(SCOPE_IDENTITY() AS INT);";
+            SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
                 int registrationId;
 
                 using (var cmd = new SqlCommand(
-                    registrationSql, con, transaction))
+                    registrationSql, con, (SqlTransaction)transaction))
                 {
                     cmd.Parameters.Add("@EventId", SqlDbType.Int)
                         .Value = dto.EventId;
@@ -87,45 +91,48 @@ namespace CRUDAppUsingADO.DataAccess
                 }
 
                 const string participantSql = @"
-                    INSERT INTO dbo.EventRegistrationParticipants
-                    (
-                        RegistrationId,
-                        FullName,
-                        Gender,
-                        DOB,
-                        Age,
-                        Email,
-                        WhatsAppNo,
-                        Address,
-                        ProfileImage,
-                        RegistrationCategory,
-                        CollegeName,
-                        Stream,
-                        Branch,
-                        AcademicYear
-                    )
-                    VALUES
-                    (
-                        @RegistrationId,
-                        @FullName,
-                        @Gender,
-                        @DOB,
-                        @Age,
-                        @Email,
-                        @WhatsAppNo,
-                        @Address,
-                        @ProfileImage,
-                        @RegistrationCategory,
-                        @CollegeName,
-                        @Stream,
-                        @Branch,
-                        @AcademicYear
-                    );";
+            INSERT INTO dbo.EventRegistrationParticipants
+            (
+                RegistrationId,
+                FullName,
+                Gender,
+                DOB,
+                Age,
+                Email,
+                WhatsAppNo,
+                Address,
+                ProfileImage,
+                RegistrationCategory,
+                CollegeName,
+                Stream,
+                Branch,
+                AcademicYear
+            )
+            VALUES
+            (
+                @RegistrationId,
+                @FullName,
+                @Gender,
+                @DOB,
+                @Age,
+                @Email,
+                @WhatsAppNo,
+                @Address,
+                @ProfileImage,
+                @RegistrationCategory,
+                @CollegeName,
+                @Stream,
+                @Branch,
+                @AcademicYear
+            );";
 
-                foreach (var p in dto.Participants)
+                // IMPORTANT: Insert all participants under ONE RegistrationId.
+                for (int i = 0; i < dto.Participants.Count; i++)
                 {
+                    var p = dto.Participants[i];
+
                     using var cmd = new SqlCommand(
-                        participantSql, con, transaction);
+                        participantSql, con, (SqlTransaction)transaction);
 
                     cmd.Parameters.Add("@RegistrationId", SqlDbType.Int)
                         .Value = registrationId;
@@ -152,11 +159,9 @@ namespace CRUDAppUsingADO.DataAccess
                         .Value = p.Address.Trim();
 
                     cmd.Parameters.Add("@ProfileImage", SqlDbType.NVarChar, 500)
-                        .Value = (object?)imagePaths[
-                            dto.Participants.IndexOf(p)] ?? DBNull.Value;
+                        .Value = (object?)imagePaths[i] ?? DBNull.Value;
 
-                    cmd.Parameters.Add("@RegistrationCategory",
-                        SqlDbType.NVarChar, 40)
+                    cmd.Parameters.Add("@RegistrationCategory", SqlDbType.NVarChar, 40)
                         .Value = p.RegistrationCategory;
 
                     cmd.Parameters.Add("@CollegeName", SqlDbType.NVarChar, 200)
@@ -174,16 +179,17 @@ namespace CRUDAppUsingADO.DataAccess
                     await cmd.ExecuteNonQueryAsync();
                 }
 
-                transaction.Commit();
+                await transaction.CommitAsync();
 
                 return registrationId;
             }
             catch
             {
-                transaction.Rollback();
+                await transaction.RollbackAsync();
                 throw;
             }
         }
+
 
         private static int CalculateAge(DateTime dob)
         {

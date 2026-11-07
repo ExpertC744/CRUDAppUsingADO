@@ -66,6 +66,23 @@ builder.Services.AddHostedService<BulkJobBackgroundService>();
 builder.Services.AddScoped<EventRegistrationDAL>();
 builder.Services.AddHttpContextAccessor();
 
+builder.Services.AddScoped<SubscriptionDAL>();
+
+builder.Services.Configure<PaymentGatewaySettings>(
+builder.Configuration.GetSection("PaymentGateway"));
+
+builder.Services.AddHttpClient<IRazorpayService, RazorpayService>();
+
+// Subscription Management
+builder.Services.AddScoped<SubscriptionDAL>();
+builder.Services.AddScoped<SubscriptionPaymentDAL>();
+// Payment Gateway
+builder.Services.Configure<PaymentGatewaySettings>(
+builder.Configuration.GetSection("PaymentGateway"));
+
+builder.Services.AddHttpClient<IRazorpayService, RazorpayService>();
+
+
 // ==========================================
 // 5. AUTHENTICATION
 // JWT Bearer is the default for API requests.
