@@ -1,4 +1,4 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
 using CRUDAppUsingADO.DataAccess;
 using CRUDAppUsingADO.Models;
 using CRUDAppUsingADO.Models.Configuration;
@@ -87,7 +87,7 @@ namespace CRUDAppUsingADO.Controllers
                     _razorpay);
 
                 // The public KeyId is required by Razorpay Checkout.
-                result.KeyId = _settings.KeyId;
+                result.RazorpayKeyId = _settings.KeyId;
 
                 return Ok(new ApiResponse<CheckoutResponseDto>
                 {
@@ -164,6 +164,40 @@ namespace CRUDAppUsingADO.Controllers
                 Message = "Payment history retrieved.",
                 Data = payments
             });
+        }
+
+        [HttpPost("calculate")]
+        public async Task<IActionResult> CalculatePrice(
+    [FromBody] CheckoutRequestDto request)
+        {
+            if (!TryGetAdminId(out var adminId))
+                return Unauthorized(new { message = "Invalid Admin token." });
+
+            if (request.PlanId <= 0)
+                return BadRequest(new { message = "Please select a valid plan." });
+
+            try
+            {
+                var result = await _planDal.CalculatePriceAsync(
+                    request.PlanId,
+                    request.PromoCode,
+                    adminId);
+
+                return Ok(new ApiResponse<PriceCalculationDto>
+                {
+                    Success = true,
+                    Message = "Price calculated successfully. GST is 18%.",
+                    Data = result
+                });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = ex.Message
+                });
+            }
         }
     }
 }

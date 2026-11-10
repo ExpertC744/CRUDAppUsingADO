@@ -66,13 +66,6 @@ builder.Services.AddHostedService<BulkJobBackgroundService>();
 builder.Services.AddScoped<EventRegistrationDAL>();
 builder.Services.AddHttpContextAccessor();
 
-builder.Services.AddScoped<SubscriptionDAL>();
-
-builder.Services.Configure<PaymentGatewaySettings>(
-builder.Configuration.GetSection("PaymentGateway"));
-
-builder.Services.AddHttpClient<IRazorpayService, RazorpayService>();
-
 // Subscription Management
 builder.Services.AddScoped<SubscriptionDAL>();
 builder.Services.AddScoped<SubscriptionPaymentDAL>();
@@ -81,7 +74,7 @@ builder.Services.Configure<PaymentGatewaySettings>(
 builder.Configuration.GetSection("PaymentGateway"));
 
 builder.Services.AddHttpClient<IRazorpayService, RazorpayService>();
-
+builder.Services.AddScoped<PromoCodeDAL>();
 
 // ==========================================
 // 5. AUTHENTICATION

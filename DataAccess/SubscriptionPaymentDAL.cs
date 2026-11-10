@@ -1,4 +1,4 @@
-﻿using System.Data;
+using System.Data;
 using CRUDAppUsingADO.Models;
 using Microsoft.Data.SqlClient;
 using CRUDAppUsingADO.Services;
@@ -11,20 +11,12 @@ namespace CRUDAppUsingADO.DataAccess
 
         public SubscriptionPaymentDAL(IConfiguration configuration)
         {
-            _connectionString =
-                configuration.GetConnectionString("DefaultConnection")
-                ?? throw new InvalidOperationException(
-                    "DefaultConnection is missing.");
+            _connectionString = configuration.GetConnectionString("DefaultConnection") ?? throw new InvalidOperationException("DefaultConnection is missing.");
         }
 
-        private SqlConnection Connection() =>
-            new SqlConnection(_connectionString);
+        private SqlConnection Connection() => new SqlConnection(_connectionString);
 
-        public async Task<CheckoutResponseDto> CreateCheckoutAsync(
-            Guid adminId,
-            int planId,
-            string? promoCode,
-            IRazorpayService razorpay)
+        public async Task<CheckoutResponseDto> CreateCheckoutAsync(Guid adminId, int planId, string? promoCode, IRazorpayService razorpay)
         {
             decimal baseAmount, discount, taxAmount, finalAmount;
             decimal taxPercentage;
@@ -38,17 +30,16 @@ namespace CRUDAppUsingADO.DataAccess
             {
                 await con.OpenAsync();
 
-                using var tx = con.BeginTransaction(
-                    IsolationLevel.Serializable);
+                using var tx = con.BeginTransaction(IsolationLevel.Serializable);
 
                 try
                 {
                     using var planCmd = new SqlCommand(@"
-                        SELECT PlanName, PlanCategory, DurationDays,
-                               Price, TaxPercentage, Currency
-                        FROM dbo.SubscriptionPlans WITH (UPDLOCK, HOLDLOCK)
-                        WHERE PlanId = @PlanId AND IsActive = 1;",
-                        con, tx);
+    SELECT PlanName, PlanCategory, DurationDays,
+           Price, Currency
+    FROM dbo.SubscriptionPlans WITH (UPDLOCK, HOLDLOCK)
+    WHERE PlanId = @PlanId AND IsActive = 1;",
+    con, tx);
 
                     planCmd.Parameters.Add("@PlanId", SqlDbType.Int)
                         .Value = planId;
@@ -63,8 +54,9 @@ namespace CRUDAppUsingADO.DataAccess
                     category = planReader.GetByte(1);
                     durationDays = planReader.GetInt32(2);
                     baseAmount = planReader.GetDecimal(3);
-                    taxPercentage = planReader.GetDecimal(4);
-                    currency = planReader.GetString(5).Trim();
+                    currency = planReader.GetString(4).Trim();
+
+                    taxPercentage = SubscriptionConstants.GstPercentage;
 
                     await planReader.CloseAsync();
 
@@ -131,6 +123,24 @@ namespace CRUDAppUsingADO.DataAccess
                             throw new InvalidOperationException(
                                 "Plan price does not meet the promo minimum.");
 
+                        using (var cleanupCmd = new SqlCommand(@"
+    UPDATE pr
+    SET RedemptionStatus = 'Cancelled'
+    FROM dbo.PromoCodeRedemptions pr
+    INNER JOIN dbo.AdminSubscriptions s
+        ON s.SubscriptionId = pr.SubscriptionId
+    WHERE pr.PromoCodeId = @PromoId
+      AND pr.RedemptionStatus = 'Pending'
+      AND s.CreatedAt < DATEADD(MINUTE, -20, SYSUTCDATETIME());",
+    con, tx))
+                        {
+                            cleanupCmd.Parameters.Add("@PromoId", SqlDbType.Int)
+                                .Value = promoId.Value;
+
+                            await cleanupCmd.ExecuteNonQueryAsync();
+                        }
+
+
                         // Count pending reservations as well as successful redemptions.
                         using var countCmd = new SqlCommand(@"
                             SELECT
@@ -168,10 +178,10 @@ namespace CRUDAppUsingADO.DataAccess
                                 "You have reached the usage limit for this promo code.");
 
                         // Keep CurrentUsage as successful redemptions only.
-                        if (maximumUsage.HasValue &&
-                            currentUsage >= maximumUsage.Value)
-                            throw new InvalidOperationException(
-                                "Promo code usage limit has been reached.");
+                        //if (maximumUsage.HasValue &&
+                        //    currentUsage >= maximumUsage.Value)
+                        //    throw new InvalidOperationException(
+                        //        "Promo code usage limit has been reached.");
 
                         discount = discountType == 1
                             ? baseAmount * discountValue / 100m
@@ -324,7 +334,6 @@ namespace CRUDAppUsingADO.DataAccess
                     PaymentId = paymentId,
                     SubscriptionId = subscriptionId,
                     RazorpayOrderId = orderId,
-                    KeyId = GetRazorpayKeyId(),
                     BaseAmount = baseAmount,
                     DiscountAmount = discount,
                     TaxAmount = taxAmount,
@@ -338,12 +347,6 @@ namespace CRUDAppUsingADO.DataAccess
                 await MarkCheckoutFailedAsync(paymentId, subscriptionId);
                 throw;
             }
-        }
-
-        private string GetRazorpayKeyId()
-        {
-            // This method is replaced by the controller's configured KeyId.
-            return "";
         }
 
         private async Task MarkCheckoutFailedAsync(
@@ -401,45 +404,54 @@ namespace CRUDAppUsingADO.DataAccess
                 await con.OpenAsync();
 
                 using var cmd = new SqlCommand(@"
-                    SELECT PaymentId, SubscriptionId, Amount
-                    FROM dbo.SubscriptionPayments
-                    WHERE GatewayOrderId = @OrderId
-                      AND AdminUserId = @AdminId
-                      AND GatewayName = 'Razorpay';", con);
+    SELECT PaymentId, SubscriptionId, Amount, PaymentStatus
+    FROM dbo.SubscriptionPayments
+    WHERE GatewayOrderId = @OrderId
+      AND AdminUserId = @AdminId
+      AND GatewayName = 'Razorpay';", con);
 
-                cmd.Parameters.Add("@OrderId", SqlDbType.NVarChar, 300)
+                cmd.Parameters.Add("@OrderId", SqlDbType.NVarChar, 150)
                     .Value = dto.RazorpayOrderId;
+
                 cmd.Parameters.Add("@AdminId", SqlDbType.UniqueIdentifier)
                     .Value = adminId;
 
                 using var reader = await cmd.ExecuteReaderAsync();
 
                 if (!await reader.ReadAsync())
-                    throw new InvalidOperationException(
-                        "Payment order was not found.");
+                    throw new InvalidOperationException("Payment order was not found.");
 
                 paymentId = reader.GetInt64(0);
                 subscriptionId = reader.GetInt64(1);
                 amount = reader.GetDecimal(2);
-            }
 
-            if (!razorpay.VerifyPaymentSignature(
-                dto.RazorpayOrderId,
-                dto.RazorpayPaymentId,
-                dto.RazorpaySignature))
-            {
-                throw new InvalidOperationException(
-                    "Invalid Razorpay payment signature.");
-            }
+                var paymentStatus = reader.GetString(3);
 
-            if (!await razorpay.IsPaymentCapturedAsync(
-                dto.RazorpayPaymentId, amount))
-            {
-                throw new InvalidOperationException(
-                    "Razorpay has not confirmed this payment as captured.");
-            }
+                if (paymentStatus is not ("Pending" or "Created" or "Success"))
+                    throw new InvalidOperationException(
+                        "This payment cannot be verified because it is no longer pending.");
 
-            using var connection = Connection();
+                await reader.CloseAsync();
+
+                // Browser callback data is not proof of payment. Verify the
+                // HMAC signature and confirm captured status/amount with Razorpay.
+                if (!razorpay.VerifyPaymentSignature(
+                        dto.RazorpayOrderId,
+                        dto.RazorpayPaymentId,
+                        dto.RazorpaySignature))
+                {
+                    throw new InvalidOperationException(
+                        "Razorpay payment signature is invalid.");
+                }
+
+                if (!await razorpay.IsPaymentCapturedAsync(
+                        dto.RazorpayPaymentId, amount))
+                {
+                    throw new InvalidOperationException(
+                        "Razorpay payment is not captured or the amount does not match.");
+                }
+
+                using var connection = Connection();
             await connection.OpenAsync();
 
             using var transaction = connection.BeginTransaction(
@@ -542,9 +554,7 @@ namespace CRUDAppUsingADO.DataAccess
                 var currentEnd = await dateCmd.ExecuteScalarAsync();
 
                 var now = DateTime.UtcNow;
-                var startDate = currentEnd == DBNull.Value ||
-                                currentEnd == null
-                    ? now : Convert.ToDateTime(currentEnd);
+                var startDate = currentEnd == DBNull.Value || currentEnd == null ? now : Convert.ToDateTime(currentEnd);
 
                 var endDate = startDate.AddDays(days);
 
@@ -581,23 +591,17 @@ namespace CRUDAppUsingADO.DataAccess
                       AND pr.RedemptionStatus = 'Success';",
                     connection, transaction);
 
-                activateCmd.Parameters.Add("@StartDate", SqlDbType.DateTime2)
-                    .Value = startDate;
-                activateCmd.Parameters.Add("@EndDate", SqlDbType.DateTime2)
-                    .Value = endDate;
-                activateCmd.Parameters.Add("@SubscriptionId", SqlDbType.BigInt)
-                    .Value = subscriptionId;
-                activateCmd.Parameters.Add("@PaymentId", SqlDbType.NVarChar, 300)
-                    .Value = dto.RazorpayPaymentId;
-                activateCmd.Parameters.Add("@Signature", SqlDbType.NVarChar, 1000)
-                    .Value = dto.RazorpaySignature;
-                activateCmd.Parameters.Add("@LocalPaymentId", SqlDbType.BigInt)
-                    .Value = paymentId;
+                activateCmd.Parameters.Add("@StartDate", SqlDbType.DateTime2).Value = startDate;
+                activateCmd.Parameters.Add("@EndDate", SqlDbType.DateTime2).Value = endDate;
+                activateCmd.Parameters.Add("@SubscriptionId", SqlDbType.BigInt).Value = subscriptionId;
+                    activateCmd.Parameters.Add("@PaymentId", SqlDbType.NVarChar, 150)
+        .Value = dto.RazorpayPaymentId;
 
+                    activateCmd.Parameters.Add("@Signature", SqlDbType.NVarChar, 500)
+                        .Value = dto.RazorpaySignature;
+                    activateCmd.Parameters.Add("@LocalPaymentId", SqlDbType.BigInt).Value = paymentId;
                 await activateCmd.ExecuteNonQueryAsync();
-
                 transaction.Commit();
-
                 return new PaymentVerificationResult
                 {
                     PaymentId = paymentId,
@@ -613,10 +617,10 @@ namespace CRUDAppUsingADO.DataAccess
                 transaction.Rollback();
                 throw;
             }
+            } // closes initial order lookup connection scope
         }
 
-        public async Task<List<SubscriptionHistoryDto>> GetSubscriptionHistoryAsync(
-            Guid adminId)
+        public async Task<List<SubscriptionHistoryDto>> GetSubscriptionHistoryAsync(Guid adminId)
         {
             var result = new List<SubscriptionHistoryDto>();
 
@@ -657,8 +661,7 @@ namespace CRUDAppUsingADO.DataAccess
             return result;
         }
 
-        public async Task<List<PaymentHistoryDto>> GetPaymentHistoryAsync(
-            Guid adminId)
+        public async Task<List<PaymentHistoryDto>> GetPaymentHistoryAsync(Guid adminId)
         {
             var result = new List<PaymentHistoryDto>();
 
