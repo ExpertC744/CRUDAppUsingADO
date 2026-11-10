@@ -148,15 +148,32 @@ public sealed class BulkCardController(BulkCardDAL dal, IWebHostEnvironment env)
             _ => throw new InvalidOperationException("Invalid file format.")
         };
 
-        var file = Guid.NewGuid().ToString("N") + storedExtension;
+        //var file = Guid.NewGuid().ToString("N") + storedExtension;
+        //var path = Path.Combine(dir, file);
+
+        //await using (var fs = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+        //{
+        //    await dto.Image.CopyToAsync(fs, ct);
+        //}
+
+        //var imageUrl = $"/uploads/card-designs/{file}";
+        // ===== UPDATED (START) =====
+        // file name = user name from the table (frontend sends it as DesignName)
+        var userName = string.Concat((dto.DesignName ?? "").Split(Path.GetInvalidFileNameChars())).Trim();
+        if (string.IsNullOrWhiteSpace(userName)) userName = "user";
+
+        var file = userName + storedExtension;   // Rahul Patil.png
         var path = Path.Combine(dir, file);
 
-        await using (var fs = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+        // FileMode.Create -> same name again replaces the old file
+        await using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None))
         {
             await dto.Image.CopyToAsync(fs, ct);
         }
 
-        var imageUrl = $"/uploads/card-designs/{file}";
+        // spaces become %20 so the URL works in a link
+        var imageUrl = $"/uploads/card-designs/{Uri.EscapeDataString(file)}";
+        // ===== UPDATED (END) =====
 
         try
         {
