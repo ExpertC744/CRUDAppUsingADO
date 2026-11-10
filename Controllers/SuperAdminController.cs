@@ -602,10 +602,20 @@ namespace CRUDAppUsingADO.Controllers
         }
 
         // GET: api/superadmin/promocodes
+        // GET: api/superadmin/promocodes
         [HttpGet("promocodes")]
         public async Task<IActionResult> GetAllPromoCodes()
         {
             var promos = await _promoCodeDAL.GetAllAsync();
+
+            var plans = await _subscriptionDAL.GetPlansAsync(false);
+
+            foreach (var promo in promos)
+            {
+                promo.PlanDetails = plans
+                    .Where(p => promo.PlanIds.Contains(p.PlanId))
+                    .ToList();
+            }
 
             return Ok(new
             {
@@ -620,14 +630,32 @@ namespace CRUDAppUsingADO.Controllers
         public async Task<IActionResult> GetPromoCodeById(int id)
         {
             if (id <= 0)
-                return BadRequest(new { success = false, message = "Invalid promo code ID." });
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Invalid promo code ID."
+                });
 
             var promo = await _promoCodeDAL.GetByIdAsync(id);
 
             if (promo == null)
-                return NotFound(new { success = false, message = "Promo code not found." });
+                return NotFound(new
+                {
+                    success = false,
+                    message = "Promo code not found."
+                });
 
-            return Ok(new { success = true, data = promo });
+            var plans = await _subscriptionDAL.GetPlansAsync(false);
+
+            promo.PlanDetails = plans
+                .Where(p => promo.PlanIds.Contains(p.PlanId))
+                .ToList();
+
+            return Ok(new
+            {
+                success = true,
+                data = promo
+            });
         }
 
         // PUT: api/superadmin/promocodes/5
@@ -697,6 +725,45 @@ namespace CRUDAppUsingADO.Controllers
                 message = dto.IsActive
                     ? "Promo code enabled successfully."
                     : "Promo code disabled successfully."
+            });
+        }
+
+        // GET: api/superadmin/promocodes/plans
+        [HttpGet("promocodes/plans")]
+        public async Task<IActionResult> GetPromoCodePlans()
+        {
+            var plans = await _subscriptionDAL.GetPlansAsync(false);
+
+            var result = plans
+                .Where(x => x.IsActive)
+                .OrderBy(x => x.PlanCategory)
+                .ThenBy(x => x.DisplayOrder)
+                .Select(x => new
+                {
+                    planId = x.PlanId,
+                    planName = x.PlanName,
+                    planCategory = x.PlanCategory,
+                    categoryName = x.PlanCategory switch
+                    {
+                        1 => "Events",
+                        2 => "Creatives",
+                        3 => "Events + Creatives",
+                        4 => "Download",
+                        _ => "Other"
+                    },
+                    durationValue = x.DurationValue,
+                    durationUnit = x.DurationUnit,
+                    durationDays = x.DurationDays,
+                    price = x.Price,
+                    displayName = $"{x.PlanName} - {x.DurationValue} {x.DurationUnit}"
+                })
+                .ToList();
+
+            return Ok(new
+            {
+                success = true,
+                totalRecords = result.Count,
+                data = result
             });
         }
     }

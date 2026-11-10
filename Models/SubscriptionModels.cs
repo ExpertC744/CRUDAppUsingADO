@@ -80,23 +80,28 @@ namespace CRUDAppUsingADO.Models
         public string PromoCode { get; set; } = "";
         public string PromoName { get; set; } = "";
 
-        // 1 = private, 2 = public
         public int VisibilityType { get; set; }
-
-        // 1 = percentage, 2 = fixed amount
         public int DiscountType { get; set; }
 
         public decimal DiscountValue { get; set; }
         public decimal? MaximumDiscount { get; set; }
         public decimal MinimumOrderAmount { get; set; }
         public int? ApplicableCategory { get; set; }
+
         public DateTime StartDate { get; set; }
         public DateTime ExpiryDate { get; set; }
+
         public int? MaximumUsage { get; set; }
         public int? MaximumUsagePerAdmin { get; set; }
+
         public int CurrentUsage { get; set; }
         public bool IsActive { get; set; }
+
+        // IDs saved in PromoCodePlans
         public List<int> PlanIds { get; set; } = new();
+
+        // Actual subscription plan information
+        public List<SubscriptionPlanDto> PlanDetails { get; set; } = new();
     }
 
     public class CreatePromoCodeDto
