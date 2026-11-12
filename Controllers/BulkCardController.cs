@@ -159,20 +159,39 @@ public sealed class BulkCardController(BulkCardDAL dal, IWebHostEnvironment env)
         //var imageUrl = $"/uploads/card-designs/{file}";
         // ===== UPDATED (START) =====
         // file name = user name from the table (frontend sends it as DesignName)
-        var userName = string.Concat((dto.DesignName ?? "").Split(Path.GetInvalidFileNameChars())).Trim();
-        if (string.IsNullOrWhiteSpace(userName)) userName = "user";
+        //---------------------part2
+        //var userName = string.Concat((dto.DesignName ?? "").Split(Path.GetInvalidFileNameChars())).Trim();
+        //if (string.IsNullOrWhiteSpace(userName)) userName = "user";
 
-        var file = userName + storedExtension;   // Rahul Patil.png
+        //var file = userName + storedExtension;   // Rahul Patil.png
+        //var path = Path.Combine(dir, file);
+
+        //// FileMode.Create -> same name again replaces the old file
+        //await using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None))
+        //{
+        //    await dto.Image.CopyToAsync(fs, ct);
+        //}
+
+        //// spaces become %20 so the URL works in a link
+        //var imageUrl = $"/uploads/card-designs/{Uri.EscapeDataString(file)}";
+
+        //------------part 3 
+        var file = Guid.NewGuid().ToString("N")
+           + storedExtension;
+
         var path = Path.Combine(dir, file);
 
-        // FileMode.Create -> same name again replaces the old file
-        await using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None))
+        await using (var fs = new FileStream(
+            path,
+            FileMode.CreateNew,
+            FileAccess.Write,
+            FileShare.None))
         {
             await dto.Image.CopyToAsync(fs, ct);
         }
 
-        // spaces become %20 so the URL works in a link
-        var imageUrl = $"/uploads/card-designs/{Uri.EscapeDataString(file)}";
+        var imageUrl = $"/uploads/card-designs/{file}";
+
         // ===== UPDATED (END) =====
 
         try

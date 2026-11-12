@@ -278,7 +278,8 @@ SELECT
     d.CanvasJson,
     t.TemplateName,
     t.Message,
-    ISNULL(t.NoOfParameters, 0)
+    ISNULL(t.NoOfParameters, 0),
+    ISNULL(t.SendType, 1)
 FROM dbo.BulkJobs j
 INNER JOIN dbo.CardDesigns d
     ON d.CardDesignId = j.CardDesignId
@@ -310,7 +311,8 @@ WHERE j.JobId = @J;";
             CanvasJson = r.IsDBNull(11) ? "{}" : r.GetString(11),
             TemplateName = r.IsDBNull(12) ? null : r.GetString(12),
             TemplateMessage = r.IsDBNull(13) ? null : r.GetString(13),
-            TemplateParameterCount = r.GetInt32(14)
+            TemplateParameterCount = r.GetInt32(14),
+            TemplateSendType = Convert.ToInt32(r.GetValue(15))
         };
     }
 
