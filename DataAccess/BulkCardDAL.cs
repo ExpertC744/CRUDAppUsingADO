@@ -480,4 +480,249 @@ WHERE JobId = @J
 
         await cmd.ExecuteNonQueryAsync(ct);
     }
+
+
+    public async Task<(int totalRecords, List<Models.Bulk.BulkJobListItemDto> data)>
+        GetJobsAsync(
+            Guid admin,
+            string? status,
+            int page,
+            int pageSize,
+            CancellationToken ct)
+    {
+        var list = new List<Models.Bulk.BulkJobListItemDto>();
+
+        await using var cn = new SqlConnection(cs);
+        await cn.OpenAsync(ct);
+
+        const string countSql = @"
+        SELECT COUNT(*)
+        FROM dbo.BulkJobs
+        WHERE AdminUserId = @A
+          AND (@Status IS NULL OR JobStatus = @Status);";
+
+        int totalRecords;
+
+        await using (var countCmd = new SqlCommand(countSql, cn))
+        {
+            countCmd.Parameters.Add("@A", SqlDbType.UniqueIdentifier).Value = admin;
+            countCmd.Parameters.Add("@Status", SqlDbType.NVarChar, 30).Value =
+                (object?)status ?? DBNull.Value;
+
+            totalRecords = Convert.ToInt32(
+                await countCmd.ExecuteScalarAsync(ct));
+        }
+
+        const string sql = @"
+        SELECT
+            j.JobId,
+            j.CardDesignId,
+            j.JobStatus,
+            j.TotalCount,
+
+            (SELECT COUNT(*)
+             FROM dbo.BulkJobRecipients r
+             WHERE r.JobId = j.JobId
+               AND r.Status = 'Success') AS SentCount,
+
+            (SELECT COUNT(*)
+             FROM dbo.BulkJobRecipients r
+             WHERE r.JobId = j.JobId
+               AND r.Status = 'Failed') AS FailedCount,
+
+            (SELECT COUNT(*)
+             FROM dbo.BulkJobRecipients r
+             WHERE r.JobId = j.JobId
+               AND r.Status = 'Pending') AS PendingCount,
+
+            (SELECT COUNT(*)
+             FROM dbo.BulkJobRecipients r
+             WHERE r.JobId = j.JobId
+               AND r.Status = 'Processing') AS ProcessingCount,
+
+            j.ScheduledAtUtc,
+            j.CreatedAt,
+            j.StartedAt,
+            j.CompletedAt
+
+        FROM dbo.BulkJobs j
+
+        WHERE j.AdminUserId = @A
+          AND (@Status IS NULL OR j.JobStatus = @Status)
+
+        ORDER BY j.CreatedAt DESC
+
+        OFFSET @Offset ROWS
+        FETCH NEXT @PageSize ROWS ONLY;";
+
+        await using var cmd = new SqlCommand(sql, cn);
+
+        cmd.Parameters.Add("@A", SqlDbType.UniqueIdentifier).Value = admin;
+        cmd.Parameters.Add("@Status", SqlDbType.NVarChar, 30).Value =
+            (object?)status ?? DBNull.Value;
+
+        cmd.Parameters.Add("@Offset", SqlDbType.Int).Value =
+            (page - 1) * pageSize;
+
+        cmd.Parameters.Add("@PageSize", SqlDbType.Int).Value = pageSize;
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+        while (await reader.ReadAsync(ct))
+        {
+            list.Add(new Models.Bulk.BulkJobListItemDto
+            {
+                JobId = reader.GetGuid(0),
+                CardDesignId = reader.GetInt64(1),
+                JobStatus = reader.GetString(2),
+
+                TotalCount = reader.GetInt32(3),
+                SentCount = reader.GetInt32(4),
+                FailedCount = reader.GetInt32(5),
+                PendingCount = reader.GetInt32(6),
+                ProcessingCount = reader.GetInt32(7),
+
+                ScheduledAtUtc = reader.IsDBNull(8)
+                    ? null : reader.GetDateTime(8),
+
+                CreatedAt = reader.GetDateTime(9),
+
+                StartedAt = reader.IsDBNull(10)
+                    ? null : reader.GetDateTime(10),
+
+                CompletedAt = reader.IsDBNull(11)
+                    ? null : reader.GetDateTime(11)
+            });
+        }
+
+        return (totalRecords, list);
+    }
+
+
+
+    public async Task<Models.Bulk.BulkJobRecipientListResultDto?>
+        GetJobRecipientsAsync(
+            Guid admin,
+            Guid jobId,
+            string? status,
+            int page,
+            int pageSize,
+            CancellationToken ct)
+    {
+        var result = new Models.Bulk.BulkJobRecipientListResultDto
+        {
+            Page = page,
+            PageSize = pageSize
+        };
+
+        await using var cn = new SqlConnection(cs);
+        await cn.OpenAsync(ct);
+
+        // Confirm that the job belongs to this admin.
+        const string jobCheckSql = @"
+        SELECT COUNT(*)
+        FROM dbo.BulkJobs
+        WHERE JobId = @J
+          AND AdminUserId = @A;";
+
+        await using (var checkCmd = new SqlCommand(jobCheckSql, cn))
+        {
+            checkCmd.Parameters.Add("@J", SqlDbType.UniqueIdentifier).Value = jobId;
+            checkCmd.Parameters.Add("@A", SqlDbType.UniqueIdentifier).Value = admin;
+
+            var exists = Convert.ToInt32(
+                await checkCmd.ExecuteScalarAsync(ct));
+
+            if (exists == 0)
+                return null;
+        }
+
+        const string countSql = @"
+        SELECT COUNT(*)
+        FROM dbo.BulkJobRecipients br
+        WHERE br.JobId = @J
+          AND (@Status IS NULL OR br.Status = @Status);";
+
+        await using (var countCmd = new SqlCommand(countSql, cn))
+        {
+            countCmd.Parameters.Add("@J", SqlDbType.UniqueIdentifier).Value = jobId;
+
+            countCmd.Parameters.Add("@Status", SqlDbType.NVarChar, 20).Value =
+                (object?)status ?? DBNull.Value;
+
+            result.TotalRecords = Convert.ToInt32(
+                await countCmd.ExecuteScalarAsync(ct));
+        }
+
+        result.TotalPages = (int)Math.Ceiling(
+            result.TotalRecords / (double)pageSize);
+
+        const string sql = @"
+        SELECT
+            r.RecipientId,
+            r.FullName,
+            r.Email,
+            r.Mobile,
+            br.Status,
+            br.GeneratedImagePath,
+            br.ErrorMessage,
+            br.ProcessedAtUtc
+
+        FROM dbo.BulkJobRecipients br
+
+        INNER JOIN dbo.BulkJobs j
+            ON j.JobId = br.JobId
+
+        INNER JOIN dbo.CardRecipients r
+            ON r.RecipientId = br.RecipientId
+
+        WHERE br.JobId = @J
+          AND j.AdminUserId = @A
+          AND (@Status IS NULL OR br.Status = @Status)
+
+        ORDER BY r.RecipientId
+
+        OFFSET @Offset ROWS
+        FETCH NEXT @PageSize ROWS ONLY;";
+
+        await using var cmd = new SqlCommand(sql, cn);
+
+        cmd.Parameters.Add("@J", SqlDbType.UniqueIdentifier).Value = jobId;
+        cmd.Parameters.Add("@A", SqlDbType.UniqueIdentifier).Value = admin;
+
+        cmd.Parameters.Add("@Status", SqlDbType.NVarChar, 20).Value =
+            (object?)status ?? DBNull.Value;
+
+        cmd.Parameters.Add("@Offset", SqlDbType.Int).Value =
+            (page - 1) * pageSize;
+
+        cmd.Parameters.Add("@PageSize", SqlDbType.Int).Value = pageSize;
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+        while (await reader.ReadAsync(ct))
+        {
+            result.Data.Add(new Models.Bulk.BulkJobRecipientStatusDto
+            {
+                RecipientId = reader.GetInt64(0),
+                FullName = reader.IsDBNull(1) ? "" : reader.GetString(1),
+                Email = reader.IsDBNull(2) ? null : reader.GetString(2),
+                Mobile = reader.IsDBNull(3) ? null : reader.GetString(3),
+
+                Status = reader.IsDBNull(4) ? "" : reader.GetString(4),
+
+                GeneratedImagePath = reader.IsDBNull(5)
+                    ? null : reader.GetString(5),
+
+                ErrorMessage = reader.IsDBNull(6)
+                    ? null : reader.GetString(6),
+
+                ProcessedAtUtc = reader.IsDBNull(7)
+                    ? null : reader.GetDateTime(7)
+            });
+        }
+
+        return result;
+    }
+
 }
