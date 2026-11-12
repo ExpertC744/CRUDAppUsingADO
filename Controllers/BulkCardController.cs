@@ -265,4 +265,126 @@ public sealed class BulkCardController(BulkCardDAL dal, IWebHostEnvironment env)
 
         return job == null ? NotFound() : Ok(job);
     }
+
+
+
+    [HttpGet("bulk-jobs")]
+    public async Task<IActionResult> GetAllBulkJobs(
+        [FromQuery] string? status,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken ct = default)
+    {
+        if (!AdminId(out var admin))
+            return Unauthorized();
+
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            var allowedStatuses = new[]
+            {
+            "Queued",
+            "Scheduled",
+            "Processing",
+            "Completed",
+            "Failed"
+        };
+
+            if (!allowedStatuses.Contains(
+                status,
+                StringComparer.OrdinalIgnoreCase))
+            {
+                return BadRequest(
+                    "Invalid status. Use Queued, Scheduled, Processing, Completed or Failed.");
+            }
+
+            status = allowedStatuses.First(
+                x => x.Equals(status, StringComparison.OrdinalIgnoreCase));
+        }
+        else
+        {
+            status = null;
+        }
+
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        var result = await dal.GetJobsAsync(
+            admin, status, page, pageSize, ct);
+
+        return Ok(new
+        {
+            success = true,
+            totalRecords = result.totalRecords,
+            page,
+            pageSize,
+            totalPages = (int)Math.Ceiling(
+                result.totalRecords / (double)pageSize),
+            data = result.data
+        });
+    }
+
+
+
+    [HttpGet("bulk-jobs/{id:guid}/recipients")]
+    public async Task<IActionResult> GetBulkJobRecipients(
+        Guid id,
+        [FromQuery] string? status,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken ct = default)
+    {
+        if (!AdminId(out var admin))
+            return Unauthorized();
+
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            var allowedStatuses = new[]
+            {
+            "Pending",
+            "Processing",
+            "Success",
+            "Failed"
+        };
+
+            if (!allowedStatuses.Contains(
+                status,
+                StringComparer.OrdinalIgnoreCase))
+            {
+                return BadRequest(
+                    "Invalid recipient status. Use Pending, Processing, Success or Failed.");
+            }
+
+            status = allowedStatuses.First(
+                x => x.Equals(status, StringComparison.OrdinalIgnoreCase));
+        }
+        else
+        {
+            status = null;
+        }
+
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        var result = await dal.GetJobRecipientsAsync(
+            admin, id, status, page, pageSize, ct);
+
+        if (result == null)
+            return NotFound(new
+            {
+                success = false,
+                message = "Bulk job not found."
+            });
+
+        return Ok(new
+        {
+            success = true,
+            jobId = id,
+            totalRecords = result.TotalRecords,
+            page = result.Page,
+            pageSize = result.PageSize,
+            totalPages = result.TotalPages,
+            data = result.Data
+        });
+    }
+
 }
