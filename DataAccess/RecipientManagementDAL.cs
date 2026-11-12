@@ -165,4 +165,141 @@ END", cn, tx);
         cmd.Parameters.Add("@Dup", SqlDbType.NVarChar, 10).Value = (object?)Clean(duplicateType) ?? DBNull.Value;
         cmd.Parameters.Add("@Active", SqlDbType.Bit).Value = (object?)active ?? DBNull.Value;
     }
+
+
+    public async Task<int> SetStatusBulkAsync(
+        Guid adminId,
+        IReadOnlyCollection<long> recipientIds,
+        bool active,
+        CancellationToken ct)
+    {
+        if (recipientIds.Count == 0)
+            return 0;
+
+        await using var cn = new SqlConnection(_cs);
+        await cn.OpenAsync(ct);
+
+        var parameters = new List<string>();
+
+        await using var cmd = new SqlCommand();
+        cmd.Connection = cn;
+
+        cmd.Parameters.Add("@A", SqlDbType.UniqueIdentifier).Value = adminId;
+        cmd.Parameters.Add("@Active", SqlDbType.Bit).Value = active;
+
+        var index = 0;
+
+        foreach (var id in recipientIds.Distinct())
+        {
+            var parameterName = "@Id" + index++;
+            parameters.Add(parameterName);
+
+            cmd.Parameters.Add(parameterName, SqlDbType.BigInt).Value = id;
+        }
+
+        cmd.CommandText = $@"
+        UPDATE dbo.CardRecipients
+        SET
+            IsActive = @Active,
+            UpdatedAt = SYSUTCDATETIME()
+        WHERE
+            AdminUserId = @A
+            AND IsDeleted = 0
+            AND RecipientId IN ({string.Join(",", parameters)});
+
+        SELECT @@ROWCOUNT;
+    ";
+
+        return Convert.ToInt32(await cmd.ExecuteScalarAsync(ct));
+    }
+
+
+    public async Task<(int Deleted, int NotFound, int InUse)>
+        SoftDeleteBulkAsync(
+            Guid adminId,
+            IReadOnlyCollection<long> recipientIds,
+            CancellationToken ct)
+    {
+        if (recipientIds.Count == 0)
+            return (0, 0, 0);
+
+        await using var cn = new SqlConnection(_cs);
+        await cn.OpenAsync(ct);
+
+        await using var tx =
+            (SqlTransaction)await cn.BeginTransactionAsync(ct);
+
+        var parameters = new List<string>();
+
+        await using var cmd = new SqlCommand();
+        cmd.Connection = cn;
+        cmd.Transaction = tx;
+
+        cmd.Parameters.Add("@A", SqlDbType.UniqueIdentifier).Value = adminId;
+
+        var index = 0;
+
+        foreach (var id in recipientIds.Distinct())
+        {
+            var parameterName = "@Id" + index++;
+            parameters.Add(parameterName);
+
+            cmd.Parameters.Add(parameterName, SqlDbType.BigInt).Value = id;
+        }
+
+        var idList = string.Join(",", parameters);
+
+        cmd.CommandText = $@"
+        DECLARE @Found INT;
+        DECLARE @Deleted INT;
+
+        SELECT @Found = COUNT(*)
+        FROM dbo.CardRecipients
+        WHERE AdminUserId = @A
+          AND IsDeleted = 0
+          AND RecipientId IN ({idList});
+
+        UPDATE r
+        SET
+            IsDeleted = 1,
+            IsActive = 0,
+            UpdatedAt = SYSUTCDATETIME()
+        FROM dbo.CardRecipients r
+        WHERE r.AdminUserId = @A
+          AND r.IsDeleted = 0
+          AND r.RecipientId IN ({idList})
+          AND NOT EXISTS
+          (
+              SELECT 1
+              FROM dbo.BulkJobRecipients br
+              WHERE br.RecipientId = r.RecipientId
+                AND br.Status IN ('Pending', 'Processing')
+          );
+
+        SET @Deleted = @@ROWCOUNT;
+
+        SELECT
+            @Deleted AS Deleted,
+            (@Found - @Deleted) AS InUse,
+            ({recipientIds.Distinct().Count()} - @Found) AS NotFound;
+    ";
+
+        int deleted;
+        int inUse;
+        int notFound;
+
+        await using (var reader = await cmd.ExecuteReaderAsync(ct))
+        {
+            await reader.ReadAsync(ct);
+
+            deleted = reader.GetInt32(0);
+            inUse = reader.GetInt32(1);
+            notFound = reader.GetInt32(2);
+        }
+
+        await tx.CommitAsync(ct);
+
+        return (deleted, notFound, inUse);
+    }
+
 }

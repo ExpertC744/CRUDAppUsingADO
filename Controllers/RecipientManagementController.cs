@@ -181,4 +181,213 @@ public sealed class RecipientManagementController(
         var digits = new string(mobile.Where(char.IsDigit).ToArray());
         return digits.Length is >= 10 and <= 15;
     }
+
+
+    // 1. GET ALL ACTIVE RECIPIENTS
+    [HttpGet("active")]
+    public async Task<IActionResult> GetActiveRecipients(
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken ct = default)
+    {
+        if (!TryGetAdminId(out var adminId))
+            return Unauthorized();
+
+        if (!await IsEnabledAdminAsync(adminId, ct))
+            return Forbid();
+
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 200);
+
+        var result = await dal.GetAsync(
+            adminId, search, null, null, true,
+            page, pageSize, ct);
+
+        return Ok(new
+        {
+            success = true,
+            status = "Active",
+            totalRecords = result.TotalRecords,
+            page = result.Page,
+            pageSize = result.PageSize,
+            totalPages = result.TotalPages,
+            data = result.Recipients
+        });
+    }
+
+
+    // 2. GET ALL INACTIVE RECIPIENTS
+    [HttpGet("inactive")]
+    public async Task<IActionResult> GetInactiveRecipients(
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken ct = default)
+    {
+        if (!TryGetAdminId(out var adminId))
+            return Unauthorized();
+
+        if (!await IsEnabledAdminAsync(adminId, ct))
+            return Forbid();
+
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 200);
+
+        var result = await dal.GetAsync(
+            adminId, search, null, null, false,
+            page, pageSize, ct);
+
+        return Ok(new
+        {
+            success = true,
+            status = "Inactive",
+            totalRecords = result.TotalRecords,
+            page = result.Page,
+            pageSize = result.PageSize,
+            totalPages = result.TotalPages,
+            data = result.Recipients
+        });
+    }
+
+
+    // 3. ENABLE MULTIPLE RECIPIENTS
+    [HttpPatch("bulk/enable")]
+    public async Task<IActionResult> EnableMultipleRecipients(
+        [FromBody] RecipientBulkActionDto dto,
+        CancellationToken ct)
+    {
+        if (!TryGetAdminId(out var adminId))
+            return Unauthorized();
+
+        if (!await IsEnabledAdminAsync(adminId, ct))
+            return Forbid();
+
+        if (dto.RecipientIds == null ||
+            dto.RecipientIds.Count == 0)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message = "Please select at least one recipient."
+            });
+        }
+
+        if (dto.RecipientIds.Count > 500 ||
+            dto.RecipientIds.Any(id => id <= 0))
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message = "Select between 1 and 500 valid recipient IDs."
+            });
+        }
+
+        var updated = await dal.SetStatusBulkAsync(
+            adminId, dto.RecipientIds, true, ct);
+
+        return Ok(new
+        {
+            success = true,
+            message = "Selected recipients enabled successfully.",
+            requested = dto.RecipientIds.Distinct().Count(),
+            enabled = updated
+        });
+    }
+
+
+    // 4. DISABLE MULTIPLE RECIPIENTS
+    [HttpPatch("bulk/disable")]
+    public async Task<IActionResult> DisableMultipleRecipients(
+        [FromBody] RecipientBulkActionDto dto,
+        CancellationToken ct)
+    {
+        if (!TryGetAdminId(out var adminId))
+            return Unauthorized();
+
+        if (!await IsEnabledAdminAsync(adminId, ct))
+            return Forbid();
+
+        if (dto.RecipientIds == null ||
+            dto.RecipientIds.Count == 0)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message = "Please select at least one recipient."
+            });
+        }
+
+        if (dto.RecipientIds.Count > 500 ||
+            dto.RecipientIds.Any(id => id <= 0))
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message = "Select between 1 and 500 valid recipient IDs."
+            });
+        }
+
+        var updated = await dal.SetStatusBulkAsync(
+            adminId, dto.RecipientIds, false, ct);
+
+        return Ok(new
+        {
+            success = true,
+            message = "Selected recipients disabled successfully.",
+            requested = dto.RecipientIds.Distinct().Count(),
+            disabled = updated
+        });
+    }
+
+
+    // 5. REMOVE MULTIPLE RECIPIENTS
+    [HttpPost("bulk/remove")]
+    public async Task<IActionResult> RemoveMultipleRecipients(
+        [FromBody] RecipientBulkActionDto dto,
+        CancellationToken ct)
+    {
+        if (!TryGetAdminId(out var adminId))
+            return Unauthorized();
+
+        if (!await IsEnabledAdminAsync(adminId, ct))
+            return Forbid();
+
+        if (dto.RecipientIds == null ||
+            dto.RecipientIds.Count == 0)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message = "Please select at least one recipient."
+            });
+        }
+
+        if (dto.RecipientIds.Count > 500 ||
+            dto.RecipientIds.Any(id => id <= 0))
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message = "Select between 1 and 500 valid recipient IDs."
+            });
+        }
+
+        var result = await dal.SoftDeleteBulkAsync(
+            adminId, dto.RecipientIds, ct);
+
+        return Ok(new
+        {
+            success = true,
+            message = "Bulk recipient removal completed.",
+            requested = dto.RecipientIds.Distinct().Count(),
+            deleted = result.Deleted,
+            notFound = result.NotFound,
+            inUse = result.InUse,
+            warning = result.InUse > 0
+                ? "Some recipients are currently used in Pending or Processing jobs and could not be removed."
+                : null
+        });
+    }
+
 }
