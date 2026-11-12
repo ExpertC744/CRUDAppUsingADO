@@ -76,6 +76,8 @@ builder.Configuration.GetSection("PaymentGateway"));
 builder.Services.AddHttpClient<IRazorpayService, RazorpayService>();
 builder.Services.AddScoped<PromoCodeDAL>();
 
+builder.Services.AddScoped<ContactUsDAL>();
+
 // ==========================================
 // 5. AUTHENTICATION
 // JWT Bearer is the default for API requests.

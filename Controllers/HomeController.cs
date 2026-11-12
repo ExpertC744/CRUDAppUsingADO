@@ -13,6 +13,7 @@ namespace CRUDAppUsingADO.Controllers
         private readonly AdminEventDAL _eventDAL;
         private readonly SubscriptionDAL _subscriptionDal;
         private readonly PromoCodeDAL _promoCodeDAL;
+        private readonly ContactUsDAL _contactUsDAL;
 
         private const string AdminUserId = "ADMIN_USER_ID";
 
@@ -20,12 +21,14 @@ namespace CRUDAppUsingADO.Controllers
     FeedbackDAL feedbackDAL,
     AdminEventDAL eventDAL,
     SubscriptionDAL subscriptionDal,
-    PromoCodeDAL promoCodeDAL)
+    PromoCodeDAL promoCodeDAL,
+    ContactUsDAL contactUsDAL)
         {
             _feedbackDAL = feedbackDAL;
             _eventDAL = eventDAL;
             _subscriptionDal = subscriptionDal;
             _promoCodeDAL = promoCodeDAL;
+            _contactUsDAL = contactUsDAL;
         }
 
         // GET: api/home/feedback
@@ -133,5 +136,38 @@ namespace CRUDAppUsingADO.Controllers
                 data = promos
             });
         }
+
+
+        // POST: api/home/contact
+        [HttpPost("contact")]
+        [AllowAnonymous]
+        public async Task<IActionResult> SubmitContactMessage(
+            [FromBody] ContactUsCreateDto dto,
+            CancellationToken ct)
+        {
+            if (!ModelState.IsValid)
+                return ValidationProblem(ModelState);
+
+            try
+            {
+                long contactId = await _contactUsDAL.InsertAsync(dto, ct);
+
+                return Ok(new
+                {
+                    success = true,
+                    contactId,
+                    message = "Thank you for contacting us. Your message has been submitted successfully."
+                });
+            }
+            catch (Exception)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "Unable to submit your message right now. Please try again later."
+                });
+            }
+        }
+
     }
 }
