@@ -22,6 +22,7 @@ public sealed class BulkJobDetails
     public string? TemplateName { get; set; }
     public string? TemplateMessage { get; set; }
     public int TemplateParameterCount { get; set; }
+    public int TemplateSendType { get; set; } = 1;
 }
 
 public sealed class BulkRecipientDetails

@@ -13,6 +13,39 @@ public sealed class CardImageRenderer
     {
         _environment = environment;
     }
+    private string ResolveImagePath(string imagePath)
+    {
+        if (string.IsNullOrWhiteSpace(imagePath))
+            throw new FileNotFoundException("Card background image path is empty.");
+
+        // Decode URL-encoded characters and normalize slashes.
+        string relativePath = Uri.UnescapeDataString(imagePath.Trim())
+            .Replace('\\', '/')
+            .TrimStart('/');
+
+        string webRoot = _environment.WebRootPath
+            ?? Path.Combine(_environment.ContentRootPath, "wwwroot");
+
+        string[] candidates =
+        {
+        Path.GetFullPath(Path.Combine(webRoot, relativePath)),
+        Path.GetFullPath(Path.Combine(_environment.ContentRootPath, relativePath))
+    };
+
+        foreach (string candidate in candidates)
+        {
+            if (File.Exists(candidate))
+                return candidate;
+        }
+
+        throw new FileNotFoundException(
+            "Card background image not found. " +
+            $"Database path: {imagePath}. " +
+            $"WebRootPath: {_environment.WebRootPath}. " +
+            $"ContentRootPath: {_environment.ContentRootPath}. " +
+            $"Checked paths: {string.Join(" | ", candidates)}");
+    }
+
 
     public async Task<string> GenerateAsync(
         BulkJobDetails job,
@@ -20,17 +53,25 @@ public sealed class CardImageRenderer
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(job.ImagePath))
-            throw new InvalidOperationException(
-                "Card background image is missing.");
+        {
+            throw new InvalidOperationException("Card background image is missing in CardDesigns.");
+        }
 
-        string relativePath = job.ImagePath
-            .TrimStart('/', '\\')
-            .Replace('/', Path.DirectorySeparatorChar);
+        // Resolve the actual physical image path.
+        string imagePath = ResolveImagePath(job.ImagePath);
+
+        //string relativePath = job.ImagePath
+        //    .TrimStart('/', '\\')
+        //    .Replace('/', Path.DirectorySeparatorChar);
+
+        string relativePath = Uri.UnescapeDataString(
+    job.ImagePath.TrimStart('/', '\\')
+).Replace('/', Path.DirectorySeparatorChar);
 
         string webRoot = _environment.WebRootPath
             ?? Path.Combine(_environment.ContentRootPath, "wwwroot");
 
-        string imagePath = Path.Combine(webRoot, relativePath);
+        //string imagePath = Path.Combine(webRoot, relativePath);
 
         if (!File.Exists(imagePath))
             throw new FileNotFoundException(

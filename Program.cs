@@ -57,7 +57,6 @@ builder.Services.Configure<SendGridSettings>(builder.Configuration.GetSection("S
 builder.Services.AddScoped<WhatsAppTemplateSelectionDAL>();
 // Bulk job processing
 builder.Services.AddScoped<CardImageRenderer>();
-builder.Services.AddScoped<BhashWhatsAppService>();
 builder.Services.AddScoped<BulkJobProcessor>();
 
 // Background worker
@@ -77,6 +76,19 @@ builder.Services.AddHttpClient<IRazorpayService, RazorpayService>();
 builder.Services.AddScoped<PromoCodeDAL>();
 
 builder.Services.AddScoped<ContactUsDAL>();
+
+builder.Services.AddHttpClient("BhashSMS", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+
+builder.Services.AddHttpClient("SendGrid", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(60);
+});
+
+builder.Services.AddScoped<BhashWhatsAppService>();
+builder.Services.AddScoped<SendGridEmailService>();
 
 // ==========================================
 // 5. AUTHENTICATION
