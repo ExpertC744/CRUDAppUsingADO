@@ -17,6 +17,7 @@ namespace CRUDAppUsingADO.Controllers
         private readonly TemplateManagementDAL _templateDAL;
         private readonly SubscriptionDAL _subscriptionDAL;
         private readonly PromoCodeDAL _promoCodeDAL;
+        private readonly ContactUsDAL _contactUsDAL;
 
         public SuperAdminController(
     FeedbackDAL feedbackDAL,
@@ -24,7 +25,8 @@ namespace CRUDAppUsingADO.Controllers
     AdminEventDAL adminEventDAL,
     TemplateManagementDAL templateDAL,
     SubscriptionDAL subscriptionDAL,
-    PromoCodeDAL promoCodeDAL)
+    PromoCodeDAL promoCodeDAL,
+    ContactUsDAL contactUsDAL)
         {
             _feedbackDAL = feedbackDAL;
             _adminProfileDAL = adminProfileDAL;
@@ -32,6 +34,7 @@ namespace CRUDAppUsingADO.Controllers
             _templateDAL = templateDAL;
             _subscriptionDAL = subscriptionDAL;
             _promoCodeDAL = promoCodeDAL;
+            _contactUsDAL = contactUsDAL;
         }
 
         // GET: api/superadmin/dashboard
@@ -766,5 +769,103 @@ namespace CRUDAppUsingADO.Controllers
                 data = result
             });
         }
+
+
+        // ============================================
+        // CONTACT US MANAGEMENT
+        // ============================================
+
+        // GET: api/superadmin/contacts
+        [HttpGet("contacts")]
+        public async Task<IActionResult> GetAllContactMessages(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20,
+            [FromQuery] bool? isRead = null,
+            CancellationToken ct = default)
+        {
+            page = Math.Max(1, page);
+            pageSize = Math.Clamp(pageSize, 1, 100);
+
+            var contacts = await _contactUsDAL.GetAllAsync(
+                page, pageSize, isRead, ct);
+
+            var totalRecords = await _contactUsDAL.GetCountAsync(
+                isRead, ct);
+
+            return Ok(new
+            {
+                success = true,
+                totalRecords,
+                page,
+                pageSize,
+                totalPages = (int)Math.Ceiling(
+                    totalRecords / (double)pageSize),
+                data = contacts
+            });
+        }
+
+        // GET: api/superadmin/contacts/5
+        [HttpGet("contacts/{id:long}")]
+        public async Task<IActionResult> GetContactMessageById(
+            long id,
+            CancellationToken ct)
+        {
+            if (id <= 0)
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Invalid contact ID."
+                });
+
+            var contact = await _contactUsDAL.GetByIdAsync(id, ct);
+
+            if (contact == null)
+                return NotFound(new
+                {
+                    success = false,
+                    message = "Contact message not found."
+                });
+
+            return Ok(new
+            {
+                success = true,
+                data = contact
+            });
+        }
+
+        // PATCH: api/superadmin/contacts/5/read
+        [HttpPatch("contacts/{id:long}/read")]
+        public async Task<IActionResult> MarkContactAsRead(
+            long id,
+            CancellationToken ct)
+        {
+            if (id <= 0)
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Invalid contact ID."
+                });
+
+            var contact = await _contactUsDAL.GetByIdAsync(id, ct);
+
+            if (contact == null)
+                return NotFound(new
+                {
+                    success = false,
+                    message = "Contact message not found."
+                });
+
+            if (!contact.IsRead)
+                await _contactUsDAL.MarkAsReadAsync(id, ct);
+
+            return Ok(new
+            {
+                success = true,
+                contactId = id,
+                isRead = true,
+                message = "Contact message marked as read."
+            });
+        }
+
     }
 }
