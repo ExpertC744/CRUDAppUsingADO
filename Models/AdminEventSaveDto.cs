@@ -84,9 +84,29 @@ namespace CRUDAppUsingADO.Models
 
         public IFormFile? QRCode { get; set; }
 
-        public IEnumerable<ValidationResult> Validate(
-            ValidationContext validationContext)
+        public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
         {
+
+            if (AdvStartDate == DateTime.MinValue)
+                yield return new ValidationResult(
+                    "Advertisement start date is required.",
+                    new[] { nameof(AdvStartDate) });
+
+            if (AdvCompletionDate == DateTime.MinValue)
+                yield return new ValidationResult(
+                    "Advertisement completion date is required.",
+                    new[] { nameof(AdvCompletionDate) });
+
+            if (EventStartDate == DateTime.MinValue)
+                yield return new ValidationResult(
+                    "Event start date is required.",
+                    new[] { nameof(EventStartDate) });
+
+            if (EventCompletionDate == DateTime.MinValue)
+                yield return new ValidationResult(
+                    "Event completion date is required.",
+                    new[] { nameof(EventCompletionDate) });
+
             if (AdvCompletionDate.Date < AdvStartDate.Date)
             {
                 yield return new ValidationResult(
