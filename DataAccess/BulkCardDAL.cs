@@ -277,8 +277,10 @@ SELECT
     d.CanvasHeight,
     d.CanvasJson,
     t.TemplateName,
-    t.Message,
-    ISNULL(t.NoOfParameters, 0),
+t.Message,
+ISNULL(t.NoOfParameters, 0),
+ISNULL(t.TemplateType, 1) AS TemplateType,
+ISNULL(t.SendType, 1) AS TemplateSendType
     ISNULL(t.SendType, 1)
 FROM dbo.BulkJobs j
 INNER JOIN dbo.CardDesigns d
@@ -312,7 +314,8 @@ WHERE j.JobId = @J;";
             TemplateName = r.IsDBNull(12) ? null : r.GetString(12),
             TemplateMessage = r.IsDBNull(13) ? null : r.GetString(13),
             TemplateParameterCount = r.GetInt32(14),
-            TemplateSendType = Convert.ToInt32(r.GetValue(15))
+            TemplateType = Convert.ToInt32(r.GetValue(15)),
+            TemplateSendType = Convert.ToInt32(r.GetValue(16))
         };
     }
 
