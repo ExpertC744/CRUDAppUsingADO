@@ -22,6 +22,11 @@ public sealed class BulkJobDetails
     public string? TemplateName { get; set; }
     public string? TemplateMessage { get; set; }
     public int TemplateParameterCount { get; set; }
+
+    // tblTemplates.TemplateType: 1 = Utility, 2 = Marketing
+    public int TemplateType { get; set; } = 1;
+
+    // tblTemplates.SendType: 1 = Text, 2 = Image, 3 = Video, 4 = Document
     public int TemplateSendType { get; set; } = 1;
 }
 

@@ -124,7 +124,6 @@ public sealed class BulkJobProcessor
                     publicBaseUrl + "/" + generatedImage.TrimStart('/');
 
                 // 8. Prepare WhatsApp template parameters
-                // Preserve the positional order {{1}}, {{2}}, etc.
                 var parameters = new List<string>
                 {
                     recipient.Text1 ?? recipientName,
@@ -133,7 +132,6 @@ public sealed class BulkJobProcessor
                     recipient.Text4 ?? ""
                 };
 
-                // Use the number of parameters configured in the template.
                 int parameterCount = Math.Clamp(
                     job.TemplateParameterCount,
                     0,
@@ -145,18 +143,38 @@ public sealed class BulkJobProcessor
 
                 // 9. Prepare template details
                 string templateName = job.TemplateName ?? "";
-                string templateMessage = job.TemplateMessage ?? "";
 
-                // IMPORTANT:
-                // These are temporary defaults because your current
-                // BulkJobDetails model does not contain these settings.
+                // CORRECT DATABASE MAPPING:
                 //
-                // utilMark = 0 means Marketing endpoint.
-                // textimage means WhatsApp image template.
-                // SendType: 1 = Marketing, 2 = Utility
-                int utilMark = job.TemplateSendType == 2 ? 1 : 0;
+                // TemplateType:
+                // 1 = Utility
+                // 2 = Marketing
+                //
+                // SendType:
+                // 1 = Text
+                // 2 = Text + Image
+                // 3 = Text + Video
+                // 4 = Text + Document
 
-                string templateType = "textimage";
+                // Select API endpoint using TemplateType
+                int utilMark = job.TemplateType switch
+                {
+                    1 => 1, // Utility endpoint
+                    2 => 0, // Marketing endpoint
+                    _ => throw new InvalidOperationException(
+                        $"Invalid TemplateType: {job.TemplateType}")
+                };
+
+                // Select message/media type using SendType
+                string templateType = job.TemplateSendType switch
+                {
+                    1 => "text",
+                    2 => "textimage",
+                    3 => "textvideo",
+                    4 => "textdocument",
+                    _ => throw new InvalidOperationException(
+                        $"Invalid SendType: {job.TemplateSendType}")
+                };
 
                 DeliveryResult? whatsappResult = null;
                 DeliveryResult? emailResult = null;
@@ -182,14 +200,17 @@ public sealed class BulkJobProcessor
                     }
                     else
                     {
-                        // Your current BhashWhatsAppService expects int adminId.
-                        // New project AdminUserId is Guid.
+                        // Existing BhashWhatsAppService expects int adminId.
                         // Passing 0 selects the configured Default account.
-                        //
-                        // To use different Bhash accounts per admin,
-                        // add a Guid-to-account mapping in configuration
-                        // and update BhashWhatsAppService accordingly.
                         int bhashAccountAdminId = 0;
+
+                        _logger.LogInformation(
+                            "WhatsApp template {TemplateName}: TemplateType={TemplateType}, SendType={SendType}, EndpointType={EndpointType}, MessageType={MessageType}",
+                            templateName,
+                            job.TemplateType,
+                            job.TemplateSendType,
+                            utilMark == 1 ? "Utility" : "Marketing",
+                            templateType);
 
                         whatsappResult =
                             await _whatsAppService.SendWhatsAppAsync(
@@ -233,7 +254,6 @@ public sealed class BulkJobProcessor
                 }
 
                 // 12. Determine overall delivery status
-                // Both channels must succeed when Channels = Both.
                 bool overallSuccess =
                     (!sendWhatsApp || whatsappResult?.Success == true) &&
                     (!sendEmail || emailResult?.Success == true);
