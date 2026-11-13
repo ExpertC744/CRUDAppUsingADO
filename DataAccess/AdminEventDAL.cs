@@ -79,7 +79,12 @@ namespace CRUDAppUsingADO.DataAccess
 
                 CreatedAt = Convert.ToDateTime(r["CreatedAt"]),
                 UpdatedAt = r["UpdatedAt"] == DBNull.Value
-                    ? null : Convert.ToDateTime(r["UpdatedAt"])
+                    ? null : Convert.ToDateTime(r["UpdatedAt"]),
+
+                    AttendanceQRCodeUrl =
+    r["AttendanceQRCodeUrl"] == DBNull.Value
+        ? null
+        : r["AttendanceQRCodeUrl"].ToString(),
             };
         }
 
@@ -402,6 +407,29 @@ namespace CRUDAppUsingADO.DataAccess
             using var reader = await cmd.ExecuteReaderAsync();
 
             return await reader.ReadAsync() ? Map(reader) : null;
+        }
+
+
+        public async Task UpdateAttendanceQRCodeUrlAsync(int eventId, string qrCodeUrl)
+        {
+            using var con = GetConnection();
+
+            const string sql = @"
+        UPDATE dbo.AdminEvents
+        SET AttendanceQRCodeUrl = @QRCodeUrl
+        WHERE EventId = @EventId;";
+
+            using var cmd = new SqlCommand(sql, con);
+
+            cmd.Parameters.Add("@EventId", SqlDbType.Int)
+                .Value = eventId;
+
+            cmd.Parameters.Add("@QRCodeUrl", SqlDbType.NVarChar, 500)
+                .Value = qrCodeUrl;
+
+            await con.OpenAsync();
+
+            await cmd.ExecuteNonQueryAsync();
         }
 
     }

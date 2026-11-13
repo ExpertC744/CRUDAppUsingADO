@@ -39,6 +39,8 @@ builder.Services.AddScoped<UserDAL>();
 builder.Services.AddScoped<TokenDAL>();
 builder.Services.AddScoped<FeedbackDAL>();
 
+builder.Services.AddScoped<AttendanceQrService>();
+
 // ==========================================
 // 4. SERVICES
 // ==========================================
@@ -76,6 +78,8 @@ builder.Services.AddHttpClient<IRazorpayService, RazorpayService>();
 builder.Services.AddScoped<PromoCodeDAL>();
 
 builder.Services.AddScoped<ContactUsDAL>();
+builder.Services.AddScoped<EventAttendanceDAL>();
+builder.Services.AddScoped<AdminAttendanceDAL>();
 
 builder.Services.AddHttpClient("BhashSMS", client =>
 {

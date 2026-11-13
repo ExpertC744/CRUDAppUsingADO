@@ -26,12 +26,13 @@ public sealed class SendGridEmailService
     }
 
     public async Task<DeliveryResult> SendAsync(
-        string recipientName,
-        string recipientEmail,
-        string message,
-        string? fileUrl,
-        string? generatedRelativePath,
-        CancellationToken cancellationToken = default)
+    string recipientName,
+    string recipientEmail,
+    string message,
+    string? fileUrl,
+    string? generatedRelativePath,
+    CancellationToken cancellationToken = default,
+    string? subject = null)
     {
         try
         {
@@ -46,7 +47,7 @@ public sealed class SendGridEmailService
 
             string apiKey = _configuration["SendGrid:ApiKey"] ?? "";
             string fromEmail = _configuration["SendGrid:FromEmail"] ?? "";
-            string fromName = _configuration["SendGrid:FromName"] ?? "Certwala";
+            string fromName = _configuration["SendGrid:FromName"] ?? "EventCert";
 
             if (string.IsNullOrWhiteSpace(apiKey) ||
                 string.IsNullOrWhiteSpace(fromEmail))
@@ -110,7 +111,9 @@ public sealed class SendGridEmailService
                     email = fromEmail,
                     name = fromName
                 },
-                ["subject"] = $"Your card / document from {fromName}",
+                ["subject"] = string.IsNullOrWhiteSpace(subject)
+    ? $"Your card / document from {fromName}"
+    : subject,
                 ["content"] = emailContent
             };
 
@@ -231,4 +234,45 @@ public sealed class SendGridEmailService
 
         return fullPath;
     }
+
+
+    public async Task<DeliveryResult> SendAttendanceOtpAsync(string participantName, string participantEmail, string otp, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(participantEmail))
+        {
+            return new DeliveryResult
+            {
+                Success = false,
+                Response = "Participant email is missing."
+            };
+        }
+
+        if (string.IsNullOrWhiteSpace(otp))
+        {
+            return new DeliveryResult
+            {
+                Success = false,
+                Response = "Attendance OTP is missing."
+            };
+        }
+
+        string message =
+            $"Your EventCert attendance verification OTP is: {otp}\n\n" +
+            "This OTP is valid for 5 minutes.\n\n" +
+            "Please do not share this OTP with anyone. " +
+            "If you did not request attendance verification, " +
+            "you can safely ignore this email.";
+
+        return await SendAsync(
+            recipientName: participantName,
+            recipientEmail: participantEmail,
+            message: message,
+            fileUrl: null,
+            generatedRelativePath: null,
+            cancellationToken: cancellationToken,
+            subject: "Event Attendance Verification OTP - EventCert"
+        );
+    }
+
+
 }

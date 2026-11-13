@@ -1,5 +1,6 @@
 ﻿using CRUDAppUsingADO.DataAccess;
 using CRUDAppUsingADO.Models;
+using CRUDAppUsingADO.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -14,12 +15,14 @@ public class AdminController : ControllerBase
     private readonly AdminProfileDAL _adminDAL;
     private readonly IWebHostEnvironment _environment;
     private readonly AdminEventDAL _eventDAL;
+    private readonly AttendanceQrService _attendanceQrService;
 
-    public AdminController(AdminProfileDAL adminDAL, AdminEventDAL eventDAL, IWebHostEnvironment environment)
+    public AdminController(AdminProfileDAL adminDAL, AdminEventDAL eventDAL, IWebHostEnvironment environment, AttendanceQrService attendanceQrService)
     {
         _adminDAL = adminDAL;
         _eventDAL = eventDAL;
         _environment = environment;
+        _attendanceQrService = attendanceQrService;
     }
 
     private bool TryGetUserId(out Guid userId)
@@ -232,7 +235,14 @@ public class AdminController : ControllerBase
             var qrCode = await SaveEventFileAsync(dto.QRCode, "event-payment", false);
 
             int eventId = await _eventDAL.CreateAsync(adminUserId, dto, image1!, image2, qrCode);
+            // Generate attendance QR automatically
+            string attendanceQrUrl = await _attendanceQrService.GenerateAsync(eventId);
+
+            // Save attendance QR path in database
+            await _eventDAL.UpdateAttendanceQRCodeUrlAsync(eventId, attendanceQrUrl);
+
             var createdEvent = await _eventDAL.GetByIdAsync(eventId, adminUserId);
+
             return CreatedAtAction(nameof(GetEventById), new { eventId }, new
                 {
                     success = true,
