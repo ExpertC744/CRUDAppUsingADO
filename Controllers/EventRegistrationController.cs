@@ -33,52 +33,60 @@ namespace CRUDAppUsingADO.Controllers
                 return BadRequest(ModelState);
 
             if (dto.EventId <= 0)
-                return BadRequest(new { message = "Invalid Event ID." });
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Invalid Event ID."
+                });
 
             if (dto.RegistrationType != "Individual" &&
                 dto.RegistrationType != "Group")
-                return BadRequest(new { message = "Invalid registration type." });
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Invalid registration type."
+                });
+
+            if (dto.Participants == null ||
+                dto.Participants.Count == 0 ||
+                dto.Participants.Count > 30)
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Registration must contain between 1 and 30 participants."
+                });
 
             if (dto.RegistrationType == "Individual" &&
                 dto.Participants.Count != 1)
                 return BadRequest(new
                 {
+                    success = false,
                     message = "Individual registration must have exactly one participant."
                 });
 
             if (dto.RegistrationType == "Group")
             {
                 if (string.IsNullOrWhiteSpace(dto.GroupName))
-                {
                     return BadRequest(new
                     {
+                        success = false,
                         message = "Group name is required."
                     });
-                }
 
                 if (string.IsNullOrWhiteSpace(dto.TeamLeadName))
-                {
                     return BadRequest(new
                     {
+                        success = false,
                         message = "Team lead name is required."
                     });
-                }
 
                 if (dto.Participants.Count < 2)
-                {
                     return BadRequest(new
                     {
+                        success = false,
                         message = "Group registration must contain at least 2 participants."
                     });
-                }
             }
-
-            if (dto.Participants.Count == 0 ||
-                dto.Participants.Count > 30)
-                return BadRequest(new
-                {
-                    message = "Group must contain between 1 and 30 participants."
-                });
 
             var eventDetails =
                 await _eventDAL.GetPublicEventByIdAsync(dto.EventId);
@@ -86,35 +94,114 @@ namespace CRUDAppUsingADO.Controllers
             if (eventDetails == null)
                 return BadRequest(new
                 {
+                    success = false,
                     message = "Event is unavailable or registration has expired."
                 });
 
-            foreach (var p in dto.Participants)
+            // Validate each participant
+            for (int i = 0; i < dto.Participants.Count; i++)
             {
-                if (p.DOB.Date > DateTime.Today)
+                var p = dto.Participants[i];
+
+                if (string.IsNullOrWhiteSpace(p.FullName))
                     return BadRequest(new
                     {
-                        message = "Date of birth cannot be in the future."
+                        success = false,
+                        message = $"Participant {i + 1}: Full name is required."
                     });
 
-                if (CalculateAge(p.DOB) > 120)
+                if (p.DOB == default ||
+                    p.DOB.Date > DateTime.Today ||
+                    CalculateAge(p.DOB) > 120)
                     return BadRequest(new
                     {
-                        message = "Please enter a valid date of birth."
+                        success = false,
+                        message = $"Participant {i + 1}: Please enter a valid date of birth."
                     });
 
                 if (p.Gender != "Male" && p.Gender != "Female")
                     return BadRequest(new
                     {
-                        message = "Invalid gender."
+                        success = false,
+                        message = $"Participant {i + 1}: Invalid gender."
                     });
 
-                if (!new[] { "Student", "Fresher", "Working Professional" }
+                if (!new[] { "Student", "Fresher", "Experience" }
                     .Contains(p.RegistrationCategory))
                     return BadRequest(new
                     {
-                        message = "Invalid registration category."
+                        success = false,
+                        message = $"Participant {i + 1}: Invalid registration category."
                     });
+
+                // Student and Fresher validation
+                if (p.RegistrationCategory == "Student" ||
+                    p.RegistrationCategory == "Fresher")
+                {
+                    if (string.IsNullOrWhiteSpace(p.CollegeName))
+                        return BadRequest(new
+                        {
+                            success = false,
+                            message = $"Participant {i + 1}: College name is required."
+                        });
+
+                    if (string.IsNullOrWhiteSpace(p.Stream))
+                        return BadRequest(new
+                        {
+                            success = false,
+                            message = $"Participant {i + 1}: Stream is required."
+                        });
+
+                    if (string.IsNullOrWhiteSpace(p.Branch))
+                        return BadRequest(new
+                        {
+                            success = false,
+                            message = $"Participant {i + 1}: Branch is required."
+                        });
+
+                    if (string.IsNullOrWhiteSpace(p.AcademicYear))
+                        return BadRequest(new
+                        {
+                            success = false,
+                            message = $"Participant {i + 1}: Academic year is required."
+                        });
+
+                    // Do not store professional fields for Student/Fresher
+                    p.OrganizationName = null;
+                    p.Designation = null;
+                    p.Experience = null;
+                }
+
+                // Working Professional validation
+                if (p.RegistrationCategory == "Experience")
+                {
+                    if (string.IsNullOrWhiteSpace(p.OrganizationName))
+                        return BadRequest(new
+                        {
+                            success = false,
+                            message = $"Participant {i + 1}: Organization name is required."
+                        });
+
+                    if (string.IsNullOrWhiteSpace(p.Designation))
+                        return BadRequest(new
+                        {
+                            success = false,
+                            message = $"Participant {i + 1}: Designation is required."
+                        });
+
+                    if (string.IsNullOrWhiteSpace(p.Experience))
+                        return BadRequest(new
+                        {
+                            success = false,
+                            message = $"Participant {i + 1}: Experience is required."
+                        });
+
+                    // Do not store college fields for Experience
+                    p.CollegeName = null;
+                    p.Stream = null;
+                    p.Branch = null;
+                    p.AcademicYear = null;
+                }
             }
 
             var savedFiles = new List<string>();
@@ -143,6 +230,7 @@ namespace CRUDAppUsingADO.Controllers
                             file.Length > 5 * 1024 * 1024)
                             return BadRequest(new
                             {
+                                success = false,
                                 message = "Each profile image must be between 1 byte and 5 MB."
                             });
 
@@ -157,11 +245,11 @@ namespace CRUDAppUsingADO.Controllers
                         if (!allowed.Contains(extension))
                             return BadRequest(new
                             {
+                                success = false,
                                 message = "Only JPG, JPEG, PNG and SVG are allowed."
                             });
 
                         var fileName = $"{Guid.NewGuid():N}{extension}";
-
                         var filePath = Path.Combine(folder, fileName);
 
                         await using (var stream = new FileStream(
