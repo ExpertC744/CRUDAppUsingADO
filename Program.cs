@@ -80,6 +80,7 @@ builder.Services.AddScoped<PromoCodeDAL>();
 builder.Services.AddScoped<ContactUsDAL>();
 builder.Services.AddScoped<EventAttendanceDAL>();
 builder.Services.AddScoped<AdminAttendanceDAL>();
+builder.Services.AddScoped<EventGalleryDAL>();
 
 builder.Services.AddHttpClient("BhashSMS", client =>
 {
