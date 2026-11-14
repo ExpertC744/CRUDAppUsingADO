@@ -217,9 +217,7 @@ namespace CRUDAppUsingADO.DataAccess
         public async Task<List<object>> GetEventRegistrationsAsync(int eventId)
         {
             var result = new List<object>();
-
             using var con = GetConnection();
-
             const string sql = @"
                 SELECT
                     r.RegistrationId,
