@@ -1,5 +1,4 @@
-﻿
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Http;
 
 namespace CRUDAppUsingADO.Models
@@ -47,17 +46,21 @@ namespace CRUDAppUsingADO.Models
         [Required]
         public string RegistrationCategory { get; set; } = "";
 
-        [Required, StringLength(200)]
-        public string CollegeName { get; set; } = "";
+        // Student / Fresher fields
+        public string? CollegeName { get; set; }
 
-        [Required, StringLength(100)]
-        public string Stream { get; set; } = "";
+        public string? Stream { get; set; }
 
-        [Required, StringLength(150)]
-        public string Branch { get; set; } = "";
+        public string? Branch { get; set; }
 
-        [Required, StringLength(100)]
-        public string AcademicYear { get; set; } = "";
+        public string? AcademicYear { get; set; }
+
+        // Working Professional fields
+        public string? OrganizationName { get; set; }
+
+        public string? Designation { get; set; }
+
+        public string? Experience { get; set; }
     }
 
     public class EventRegistrationResultDto

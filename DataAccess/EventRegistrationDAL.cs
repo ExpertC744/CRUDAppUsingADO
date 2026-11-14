@@ -81,81 +81,111 @@ namespace CRUDAppUsingADO.DataAccess
                     registrationId = Convert.ToInt32(await cmd.ExecuteScalarAsync());
                 }
 
+
                 const string participantSql = @"
-            INSERT INTO dbo.EventRegistrationParticipants
-            (
-                RegistrationId,
-                FullName,
-                Gender,
-                DOB,
-                Age,
-                Email,
-                WhatsAppNo,
-                Address,
-                ProfileImage,
-                RegistrationCategory,
-                CollegeName,
-                Stream,
-                Branch,
-                AcademicYear
-            )
-            VALUES
-            (
-                @RegistrationId,
-                @FullName,
-                @Gender,
-                @DOB,
-                @Age,
-                @Email,
-                @WhatsAppNo,
-                @Address,
-                @ProfileImage,
-                @RegistrationCategory,
-                @CollegeName,
-                @Stream,
-                @Branch,
-                @AcademicYear
-            );";
+    INSERT INTO dbo.EventRegistrationParticipants
+    (
+        RegistrationId,
+        FullName,
+        Gender,
+        DOB,
+        Age,
+        Email,
+        WhatsAppNo,
+        Address,
+        ProfileImage,
+        RegistrationCategory,
+        CollegeName,
+        Stream,
+        Branch,
+        AcademicYear,
+        OrganizationName,
+        Designation,
+        Experience
+    )
+    VALUES
+    (
+        @RegistrationId,
+        @FullName,
+        @Gender,
+        @DOB,
+        @Age,
+        @Email,
+        @WhatsAppNo,
+        @Address,
+        @ProfileImage,
+        @RegistrationCategory,
+        @CollegeName,
+        @Stream,
+        @Branch,
+        @AcademicYear,
+        @OrganizationName,
+        @Designation,
+        @Experience
+    );";
+
 
                 // IMPORTANT: Insert all participants under ONE RegistrationId.
+
                 for (int i = 0; i < dto.Participants.Count; i++)
                 {
                     var p = dto.Participants[i];
 
-                    using var cmd = new SqlCommand(participantSql, con, (SqlTransaction)transaction);
+                    using var cmd = new SqlCommand(
+                        participantSql, con, (SqlTransaction)transaction);
 
-                    cmd.Parameters.Add("@RegistrationId", SqlDbType.Int).Value = registrationId;
+                    cmd.Parameters.Add("@RegistrationId", SqlDbType.Int)
+                        .Value = registrationId;
 
-                    cmd.Parameters.Add("@FullName", SqlDbType.NVarChar, 150).Value = p.FullName.Trim();
+                    cmd.Parameters.Add("@FullName", SqlDbType.NVarChar, 150)
+                        .Value = p.FullName.Trim();
 
-                    cmd.Parameters.Add("@Gender", SqlDbType.NVarChar, 10).Value = p.Gender;
+                    cmd.Parameters.Add("@Gender", SqlDbType.NVarChar, 20)
+                        .Value = p.Gender.Trim();
 
-                    cmd.Parameters.Add("@DOB", SqlDbType.Date).Value = p.DOB.Date;
+                    cmd.Parameters.Add("@DOB", SqlDbType.Date)
+                        .Value = p.DOB.Date;
 
-                    cmd.Parameters.Add("@Age", SqlDbType.Int).Value = CalculateAge(p.DOB);
+                    cmd.Parameters.Add("@Age", SqlDbType.Int)
+                        .Value = CalculateAge(p.DOB);
 
-                    cmd.Parameters.Add("@Email", SqlDbType.NVarChar, 150).Value = p.Email.Trim();
+                    cmd.Parameters.Add("@Email", SqlDbType.NVarChar, 150)
+                        .Value = p.Email.Trim();
 
-                    cmd.Parameters.Add("@WhatsAppNo", SqlDbType.NVarChar, 20).Value = p.WhatsAppNo.Trim();
+                    cmd.Parameters.Add("@WhatsAppNo", SqlDbType.NVarChar, 20)
+                        .Value = p.WhatsAppNo.Trim();
 
-                    cmd.Parameters.Add("@Address", SqlDbType.NVarChar, 500).Value = p.Address.Trim();
+                    cmd.Parameters.Add("@Address", SqlDbType.NVarChar, 500)
+                        .Value = p.Address.Trim();
 
-                    cmd.Parameters.Add("@ProfileImage", SqlDbType.NVarChar, 500).Value = (object?)imagePaths[i] ?? DBNull.Value;
+                    cmd.Parameters.Add("@ProfileImage", SqlDbType.NVarChar, 1000)
+                        .Value = (object?)imagePaths[i] ?? DBNull.Value;
 
-                    cmd.Parameters.Add("@RegistrationCategory", SqlDbType.NVarChar, 40)
+                    cmd.Parameters.Add("@RegistrationCategory", SqlDbType.NVarChar, 80)
                         .Value = p.RegistrationCategory;
 
+                    // Student / Fresher fields
                     cmd.Parameters.Add("@CollegeName", SqlDbType.NVarChar, 200)
-                        .Value = p.CollegeName.Trim();
+                        .Value = (object?)p.CollegeName?.Trim() ?? DBNull.Value;
 
                     cmd.Parameters.Add("@Stream", SqlDbType.NVarChar, 100)
-                        .Value = p.Stream.Trim();
+                        .Value = (object?)p.Stream?.Trim() ?? DBNull.Value;
 
                     cmd.Parameters.Add("@Branch", SqlDbType.NVarChar, 150)
-                        .Value = p.Branch.Trim();
+                        .Value = (object?)p.Branch?.Trim() ?? DBNull.Value;
 
                     cmd.Parameters.Add("@AcademicYear", SqlDbType.NVarChar, 100)
-                        .Value = p.AcademicYear.Trim();
+                        .Value = (object?)p.AcademicYear?.Trim() ?? DBNull.Value;
+
+                    // Working Professional fields
+                    cmd.Parameters.Add("@OrganizationName", SqlDbType.NVarChar, 200)
+                        .Value = (object?)p.OrganizationName?.Trim() ?? DBNull.Value;
+
+                    cmd.Parameters.Add("@Designation", SqlDbType.NVarChar, 100)
+                        .Value = (object?)p.Designation?.Trim() ?? DBNull.Value;
+
+                    cmd.Parameters.Add("@Experience", SqlDbType.NVarChar, 50)
+                        .Value = (object?)p.Experience?.Trim() ?? DBNull.Value;
 
                     await cmd.ExecuteNonQueryAsync();
                 }
@@ -215,7 +245,10 @@ namespace CRUDAppUsingADO.DataAccess
                     p.CollegeName,
                     p.Stream,
                     p.Branch,
-                    p.AcademicYear
+                    p.AcademicYear,
+                    p.OrganizationName,
+                    p.Designation,
+                    p.Experience
 
                 FROM dbo.EventRegistrations r
 
@@ -261,16 +294,17 @@ namespace CRUDAppUsingADO.DataAccess
                     CollegeName = reader["CollegeName"],
                     Stream = reader["Stream"],
                     Branch = reader["Branch"],
-                    AcademicYear = reader["AcademicYear"]
+                    AcademicYear = reader["AcademicYear"],
+                    OrganizationName = reader["OrganizationName"] == DBNull.Value ? null : reader["OrganizationName"].ToString(),
+                    Designation = reader["Designation"] == DBNull.Value ? null : reader["Designation"].ToString(),
+                    Experience = reader["Experience"] == DBNull.Value ? null : reader["Experience"].ToString()
                 });
             }
 
             return result;
         }
 
-        public async Task<RegisteredEventParticipant?> GetRegisteredParticipantAsync(
-    int eventId,
-    string email)
+        public async Task<RegisteredEventParticipant?> GetRegisteredParticipantAsync(int eventId, string email)
         {
             using var con = GetConnection();
 
