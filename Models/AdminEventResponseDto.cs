@@ -50,5 +50,9 @@
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
         public string? AttendanceQRCodeUrl { get; set; }
+
+        public string? OtherMobileNo { get; set; }
+
+        public List<string> GalleryImages { get; set; } = new();
     }
 }
