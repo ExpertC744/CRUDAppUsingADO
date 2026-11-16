@@ -53,6 +53,9 @@ namespace CRUDAppUsingADO.DataAccess
 
                 EntryFee = Convert.ToDecimal(r["EntryFee"]),
                 PaymentMode = r["PaymentMode"].ToString()!,
+                OtherMobileNo = r["OtherMobileNo"] == DBNull.Value
+    ? null
+    : r["OtherMobileNo"].ToString(),
 
                 GPay = Convert.ToBoolean(r["GPay"]),
                 PhonePe = Convert.ToBoolean(r["PhonePe"]),
@@ -86,6 +89,8 @@ namespace CRUDAppUsingADO.DataAccess
         ? null
         : r["AttendanceQRCodeUrl"].ToString(),
             };
+
+
         }
 
         private static void AddEventParameters(
@@ -179,6 +184,9 @@ namespace CRUDAppUsingADO.DataAccess
 
             cmd.Parameters.Add("@BranchName", SqlDbType.NVarChar, 150)
                 .Value = DbValue(dto.BranchName);
+
+            cmd.Parameters.Add("@OtherMobileNo", SqlDbType.NVarChar, 40)
+    .Value = (object?)dto.OtherMobileNo ?? DBNull.Value;
         }
 
         public async Task<int> CreateAsync(
@@ -191,39 +199,38 @@ namespace CRUDAppUsingADO.DataAccess
             using var con = GetConnection();
 
             const string sql = @"
-                INSERT INTO dbo.AdminEvents
-                (
-                    AdminUserId, OrganizationName, EventTitle,
-                    AdvStartDate, AdvCompletionDate,
-                    EventStartDate, EventCompletionDate, EventTime,
-                    Venue, City, State, Country,
-                    Image1, Image2, AboutEvent, Instructions,
-                    EntryFee, PaymentMode,
-                    GPay, PhonePe, Paytm, UPIID, PaymentMobileNo,
-                    QRCodeUrl, BankName, AccountHolderName,
-                    AccountNumber, IFSCCode, BranchName,
-                    nBit, nSABit
-                )
-                VALUES
-                (
-                    @AdminUserId, @OrganizationName, @EventTitle,
-                    @AdvStartDate, @AdvCompletionDate,
-                    @EventStartDate, @EventCompletionDate, @EventTime,
-                    @Venue, @City, @State, @Country,
-                    @Image1, @Image2, @AboutEvent, @Instructions,
-                    @EntryFee, @PaymentMode,
-                    @GPay, @PhonePe, @Paytm, @UPIID, @PaymentMobileNo,
-                    @QRCodeUrl, @BankName, @AccountHolderName,
-                    @AccountNumber, @IFSCCode, @BranchName,
-                    1, 1
-                );
+    INSERT INTO dbo.AdminEvents
+    (
+        AdminUserId, OrganizationName, EventTitle,
+        AdvStartDate, AdvCompletionDate,
+        EventStartDate, EventCompletionDate, EventTime,
+        Venue, City, State, Country,
+        Image1, Image2, AboutEvent, Instructions,
+        EntryFee, PaymentMode,
+        GPay, PhonePe, Paytm, UPIID, PaymentMobileNo,
+        QRCodeUrl, BankName, AccountHolderName,
+        AccountNumber, IFSCCode, BranchName,
+        nBit, nSABit, OtherMobileNo
+    )
+    VALUES
+    (
+        @AdminUserId, @OrganizationName, @EventTitle,
+        @AdvStartDate, @AdvCompletionDate,
+        @EventStartDate, @EventCompletionDate, @EventTime,
+        @Venue, @City, @State, @Country,
+        @Image1, @Image2, @AboutEvent, @Instructions,
+        @EntryFee, @PaymentMode,
+        @GPay, @PhonePe, @Paytm, @UPIID, @PaymentMobileNo,
+        @QRCodeUrl, @BankName, @AccountHolderName,
+        @AccountNumber, @IFSCCode, @BranchName,
+        1, 1, @OtherMobileNo
+    );
 
-                SELECT CAST(SCOPE_IDENTITY() AS INT);";
+    SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
             using var cmd = new SqlCommand(sql, con);
 
-            AddEventParameters(
-                cmd, dto, adminUserId, image1, image2, qrCode);
+            AddEventParameters(cmd, dto, adminUserId, image1, image2, qrCode);
 
             await con.OpenAsync();
 
@@ -297,7 +304,8 @@ namespace CRUDAppUsingADO.DataAccess
                     AccountNumber = @AccountNumber,
                     IFSCCode = @IFSCCode,
                     BranchName = @BranchName,
-                    UpdatedAt = SYSUTCDATETIME()
+                    UpdatedAt = SYSUTCDATETIME(),
+                    OtherMobileNo=@OtherMobileNo
                 WHERE EventId = @EventId
                   AND AdminUserId = @AdminUserId;
 
@@ -383,7 +391,8 @@ namespace CRUDAppUsingADO.DataAccess
             return list;
         }
 
-        public async Task<AdminEventResponseDto?> GetPublicEventByIdAsync(int eventId)
+        public async Task<AdminEventResponseDto?> GetPublicEventByIdAsync(
+    int eventId)
         {
             using var con = GetConnection();
 
@@ -404,9 +413,20 @@ namespace CRUDAppUsingADO.DataAccess
 
             await con.OpenAsync();
 
-            using var reader = await cmd.ExecuteReaderAsync();
+            AdminEventResponseDto? result;
 
-            return await reader.ReadAsync() ? Map(reader) : null;
+            using (var reader = await cmd.ExecuteReaderAsync())
+            {
+                result = await reader.ReadAsync() ? Map(reader) : null;
+            }
+
+            if (result == null)
+                return null;
+
+            // Fetch all gallery images for this event.
+            result.GalleryImages = await GetGalleryImagesAsync(eventId);
+
+            return result;
         }
 
 
@@ -430,6 +450,124 @@ namespace CRUDAppUsingADO.DataAccess
             await con.OpenAsync();
 
             await cmd.ExecuteNonQueryAsync();
+        }
+
+
+        // =============================================
+        // GET GALLERY IMAGES FOR AN EVENT
+        // =============================================
+        public async Task<List<string>> GetGalleryImagesAsync(int eventId)
+        {
+            var images = new List<string>();
+
+            const string sql = @"
+        SELECT ImageUrl
+        FROM dbo.EventGalleryImages
+        WHERE EventId = @EventId
+        ORDER BY SortOrder, GalleryImageId;";
+
+            using var con = GetConnection();
+            using var cmd = new SqlCommand(sql, con);
+
+            cmd.Parameters.Add("@EventId", SqlDbType.Int).Value = eventId;
+
+            await con.OpenAsync();
+
+            using var reader = await cmd.ExecuteReaderAsync();
+
+            while (await reader.ReadAsync())
+            {
+                if (reader["ImageUrl"] != DBNull.Value)
+                    images.Add(reader["ImageUrl"].ToString()!);
+            }
+
+            return images;
+        }
+
+        // =============================================
+        // COUNT EXISTING GALLERY IMAGES
+        // =============================================
+        public async Task<int> GetGalleryImageCountAsync(int eventId)
+        {
+            const string sql = @"
+        SELECT COUNT(*)
+        FROM dbo.EventGalleryImages
+        WHERE EventId = @EventId;";
+
+            using var con = GetConnection();
+            using var cmd = new SqlCommand(sql, con);
+
+            cmd.Parameters.Add("@EventId", SqlDbType.Int).Value = eventId;
+
+            await con.OpenAsync();
+
+            return Convert.ToInt32(await cmd.ExecuteScalarAsync());
+        }
+
+        // =============================================
+        // INSERT GALLERY IMAGE PATHS
+        // =============================================
+        public async Task AddGalleryImagesAsync(
+            int eventId,
+            List<string> imageUrls)
+        {
+            if (imageUrls == null || imageUrls.Count == 0)
+                return;
+
+            using var con = GetConnection();
+            await con.OpenAsync();
+
+            using var transaction = await con.BeginTransactionAsync();
+
+            try
+            {
+                const string countSql = @"
+            SELECT COUNT(*)
+            FROM dbo.EventGalleryImages WITH (UPDLOCK, HOLDLOCK)
+            WHERE EventId = @EventId;";
+
+                using (var countCmd = new SqlCommand(
+                    countSql, con, (SqlTransaction)transaction))
+                {
+                    countCmd.Parameters.Add("@EventId", SqlDbType.Int).Value = eventId;
+
+                    int existingCount =
+                        Convert.ToInt32(await countCmd.ExecuteScalarAsync());
+
+                    if (existingCount + imageUrls.Count > 12)
+                        throw new InvalidOperationException(
+                            "An event can have a maximum of 12 gallery images.");
+                }
+
+                const string insertSql = @"
+            INSERT INTO dbo.EventGalleryImages
+            (EventId, ImageUrl, SortOrder)
+            VALUES
+            (@EventId, @ImageUrl, @SortOrder);";
+
+                for (int i = 0; i < imageUrls.Count; i++)
+                {
+                    using var cmd = new SqlCommand(
+                        insertSql, con, (SqlTransaction)transaction);
+
+                    cmd.Parameters.Add("@EventId", SqlDbType.Int).Value = eventId;
+
+                    cmd.Parameters.Add("@ImageUrl", SqlDbType.NVarChar, 1000)
+                        .Value = imageUrls[i];
+
+                    cmd.Parameters.Add("@SortOrder", SqlDbType.Int)
+                        .Value = i + 1;
+
+                    await cmd.ExecuteNonQueryAsync();
+                }
+
+                await transaction.CommitAsync();
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
         }
 
     }

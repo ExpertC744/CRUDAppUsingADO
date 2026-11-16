@@ -62,6 +62,10 @@ namespace CRUDAppUsingADO.Models
         [StringLength(20)]
         public string? PaymentMobileNo { get; set; }
 
+        [StringLength(40)]
+        [Phone]
+        public string? OtherMobileNo { get; set; }
+
         [StringLength(150)]
         public string? BankName { get; set; }
 
