@@ -189,22 +189,40 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowReactApp", policy =>
     {
-        var frontendUrl = builder.Configuration["Frontend:Url"];
-
-        if (string.IsNullOrWhiteSpace(frontendUrl))
-        {
-            throw new InvalidOperationException(
-                "Frontend:Url is missing from configuration."
-            );
-        }
-
         policy
-            .WithOrigins(frontendUrl)
+            .WithOrigins(
+                "http://localhost:5173",
+                "http://localhost:5174"
+            )
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials();
     });
 });
+
+//// ==========================================
+//// 7. CORS
+//// ==========================================
+//builder.Services.AddCors(options =>
+//{
+//    options.AddPolicy("AllowReactApp", policy =>
+//    {
+//        var frontendUrl = builder.Configuration["Frontend:Url"];
+
+//        if (string.IsNullOrWhiteSpace(frontendUrl))
+//        {
+//            throw new InvalidOperationException(
+//                "Frontend:Url is missing from configuration."
+//            );
+//        }
+
+//        policy
+//            .WithOrigins(frontendUrl)
+//            .AllowAnyHeader()
+//            .AllowAnyMethod()
+//            .AllowCredentials();
+//    });
+//});
 
 // ==========================================
 // 8. SWAGGER

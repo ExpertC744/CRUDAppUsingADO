@@ -96,7 +96,7 @@ public sealed class RecipientManagementController(
     [HttpPost("import")]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(20_000_000)]
-    public async Task<IActionResult> Import([FromForm] IFormFile? file, CancellationToken ct)
+    public async Task<IActionResult> Import(IFormFile? file, CancellationToken ct)
     {
         if (!TryGetAdminId(out var adminId)) return Unauthorized();
         if (!await IsEnabledAdminAsync(adminId, ct)) return Forbid();
