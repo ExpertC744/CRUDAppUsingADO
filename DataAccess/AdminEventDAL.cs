@@ -423,8 +423,8 @@ namespace CRUDAppUsingADO.DataAccess
             if (result == null)
                 return null;
 
-            // Fetch all gallery images for this event.
-            result.GalleryImages = await GetGalleryImagesAsync(eventId);
+            result.GalleryImages =
+                await GetGalleryImagesAsync(eventId);
 
             return result;
         }
@@ -456,15 +456,44 @@ namespace CRUDAppUsingADO.DataAccess
         // =============================================
         // GET GALLERY IMAGES FOR AN EVENT
         // =============================================
+        //public async Task<List<string>> GetGalleryImagesAsync(int eventId)
+        //{
+        //    var images = new List<string>();
+
+        //    const string sql = @"
+        //SELECT ImageUrl
+        //FROM dbo.EventGalleryImages
+        //WHERE EventId = @EventId
+        //ORDER BY SortOrder, GalleryImageId;";
+
+        //    using var con = GetConnection();
+        //    using var cmd = new SqlCommand(sql, con);
+
+        //    cmd.Parameters.Add("@EventId", SqlDbType.Int).Value = eventId;
+
+        //    await con.OpenAsync();
+
+        //    using var reader = await cmd.ExecuteReaderAsync();
+
+        //    while (await reader.ReadAsync())
+        //    {
+        //        if (reader["ImageUrl"] != DBNull.Value)
+        //            images.Add(reader["ImageUrl"].ToString()!);
+        //    }
+
+        //    return images;
+        //}
+
+
         public async Task<List<string>> GetGalleryImagesAsync(int eventId)
         {
             var images = new List<string>();
 
             const string sql = @"
-        SELECT ImageUrl
+        SELECT ImagePath
         FROM dbo.EventGalleryImages
         WHERE EventId = @EventId
-        ORDER BY SortOrder, GalleryImageId;";
+        ORDER BY GalleryImageId;";
 
             using var con = GetConnection();
             using var cmd = new SqlCommand(sql, con);
@@ -477,12 +506,13 @@ namespace CRUDAppUsingADO.DataAccess
 
             while (await reader.ReadAsync())
             {
-                if (reader["ImageUrl"] != DBNull.Value)
-                    images.Add(reader["ImageUrl"].ToString()!);
+                if (!reader.IsDBNull(0))
+                    images.Add(reader.GetString(0));
             }
 
             return images;
         }
+
 
         // =============================================
         // COUNT EXISTING GALLERY IMAGES
@@ -507,11 +537,13 @@ namespace CRUDAppUsingADO.DataAccess
         // =============================================
         // INSERT GALLERY IMAGE PATHS
         // =============================================
+
         public async Task AddGalleryImagesAsync(
             int eventId,
-            List<string> imageUrls)
+            Guid adminUserId,
+            List<(string ImageName, string ImagePath)> images)
         {
-            if (imageUrls == null || imageUrls.Count == 0)
+            if (images == null || images.Count == 0)
                 return;
 
             using var con = GetConnection();
@@ -534,29 +566,43 @@ namespace CRUDAppUsingADO.DataAccess
                     int existingCount =
                         Convert.ToInt32(await countCmd.ExecuteScalarAsync());
 
-                    if (existingCount + imageUrls.Count > 12)
+                    if (existingCount + images.Count > 12)
                         throw new InvalidOperationException(
-                            "An event can have a maximum of 12 gallery images.");
+                            "Maximum 12 gallery images are allowed per event.");
                 }
 
                 const string insertSql = @"
             INSERT INTO dbo.EventGalleryImages
-            (EventId, ImageUrl, SortOrder)
+            (
+                EventId,
+                AdminUserId,
+                ImageName,
+                ImagePath
+            )
             VALUES
-            (@EventId, @ImageUrl, @SortOrder);";
+            (
+                @EventId,
+                @AdminUserId,
+                @ImageName,
+                @ImagePath
+            );";
 
-                for (int i = 0; i < imageUrls.Count; i++)
+                foreach (var image in images)
                 {
                     using var cmd = new SqlCommand(
                         insertSql, con, (SqlTransaction)transaction);
 
-                    cmd.Parameters.Add("@EventId", SqlDbType.Int).Value = eventId;
+                    cmd.Parameters.Add("@EventId", SqlDbType.Int)
+                        .Value = eventId;
 
-                    cmd.Parameters.Add("@ImageUrl", SqlDbType.NVarChar, 1000)
-                        .Value = imageUrls[i];
+                    cmd.Parameters.Add("@AdminUserId", SqlDbType.UniqueIdentifier)
+                        .Value = adminUserId;
 
-                    cmd.Parameters.Add("@SortOrder", SqlDbType.Int)
-                        .Value = i + 1;
+                    cmd.Parameters.Add("@ImageName", SqlDbType.NVarChar, 255)
+                        .Value = image.ImageName;
+
+                    cmd.Parameters.Add("@ImagePath", SqlDbType.NVarChar, 1000)
+                        .Value = image.ImagePath;
 
                     await cmd.ExecuteNonQueryAsync();
                 }
@@ -569,6 +615,7 @@ namespace CRUDAppUsingADO.DataAccess
                 throw;
             }
         }
+
 
     }
 }
