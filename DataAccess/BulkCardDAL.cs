@@ -277,11 +277,10 @@ SELECT
     d.CanvasHeight,
     d.CanvasJson,
     t.TemplateName,
-t.Message,
-ISNULL(t.NoOfParameters, 0),
-ISNULL(t.TemplateType, 1) AS TemplateType,
-ISNULL(t.SendType, 1) AS TemplateSendType
-    ISNULL(t.SendType, 1)
+    t.Message,
+    ISNULL(t.NoOfParameters, 0) AS NoOfParameters,
+    ISNULL(t.TemplateType, 1) AS TemplateType,
+    ISNULL(t.SendType, 1) AS TemplateSendType
 FROM dbo.BulkJobs j
 INNER JOIN dbo.CardDesigns d
     ON d.CardDesignId = j.CardDesignId

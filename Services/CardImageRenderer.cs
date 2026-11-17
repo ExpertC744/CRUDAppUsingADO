@@ -8,44 +8,82 @@ namespace CRUDAppUsingADO.Services;
 public sealed class CardImageRenderer
 {
     private readonly IWebHostEnvironment _environment;
+    private readonly ILogger<CardImageRenderer> _logger;
 
-    public CardImageRenderer(IWebHostEnvironment environment)
+    public CardImageRenderer(
+        IWebHostEnvironment environment,
+        ILogger<CardImageRenderer> logger)
     {
         _environment = environment;
+        _logger = logger;
     }
+
+    // Resolve the database image path to its actual physical server path.
     private string ResolveImagePath(string imagePath)
     {
         if (string.IsNullOrWhiteSpace(imagePath))
-            throw new FileNotFoundException("Card background image path is empty.");
+        {
+            throw new FileNotFoundException(
+                "Card background image path is empty.");
+        }
 
-        // Decode URL-encoded characters and normalize slashes.
+        // Convert URL path into a physical relative path.
         string relativePath = Uri.UnescapeDataString(imagePath.Trim())
             .Replace('\\', '/')
             .TrimStart('/');
 
         string webRoot = _environment.WebRootPath
-            ?? Path.Combine(_environment.ContentRootPath, "wwwroot");
+            ?? Path.Combine(
+                _environment.ContentRootPath,
+                "wwwroot");
 
+        // Check possible physical locations.
         string[] candidates =
         {
-        Path.GetFullPath(Path.Combine(webRoot, relativePath)),
-        Path.GetFullPath(Path.Combine(_environment.ContentRootPath, relativePath))
-    };
+            Path.GetFullPath(
+                Path.Combine(webRoot, relativePath)),
+
+            Path.GetFullPath(
+                Path.Combine(
+                    _environment.ContentRootPath,
+                    "wwwroot",
+                    relativePath)),
+
+            Path.GetFullPath(
+                Path.Combine(
+                    _environment.ContentRootPath,
+                    relativePath))
+        };
+
+        _logger.LogInformation(
+            "Resolving card image. DatabasePath={DatabasePath}, WebRootPath={WebRootPath}, ContentRootPath={ContentRootPath}",
+            imagePath,
+            webRoot,
+            _environment.ContentRootPath);
 
         foreach (string candidate in candidates)
         {
+            _logger.LogInformation(
+                "Checking card image path: {ImagePath}",
+                candidate);
+
             if (File.Exists(candidate))
+            {
+                _logger.LogInformation(
+                    "Card background image found: {ImagePath}",
+                    candidate);
+
                 return candidate;
+            }
         }
 
         throw new FileNotFoundException(
             "Card background image not found. " +
             $"Database path: {imagePath}. " +
-            $"WebRootPath: {_environment.WebRootPath}. " +
+            $"WebRootPath: {webRoot}. " +
             $"ContentRootPath: {_environment.ContentRootPath}. " +
             $"Checked paths: {string.Join(" | ", candidates)}");
     }
-
 
     public async Task<string> GenerateAsync(
         BulkJobDetails job,
@@ -54,29 +92,26 @@ public sealed class CardImageRenderer
     {
         if (string.IsNullOrWhiteSpace(job.ImagePath))
         {
-            throw new InvalidOperationException("Card background image is missing in CardDesigns.");
+            throw new InvalidOperationException(
+                "Card background image is missing in CardDesigns.");
         }
 
-        // Resolve the actual physical image path.
+        // Resolve the physical image path once.
+        // ResolveImagePath already verifies that the file exists.
         string imagePath = ResolveImagePath(job.ImagePath);
 
-        //string relativePath = job.ImagePath
-        //    .TrimStart('/', '\\')
-        //    .Replace('/', Path.DirectorySeparatorChar);
-
-        string relativePath = Uri.UnescapeDataString(
-    job.ImagePath.TrimStart('/', '\\')
-).Replace('/', Path.DirectorySeparatorChar);
+        _logger.LogInformation(
+            "Generating card for JobId={JobId}, RecipientId={RecipientId}, ImagePath={ImagePath}",
+            job.JobId,
+            recipient.RecipientId,
+            imagePath);
 
         string webRoot = _environment.WebRootPath
-            ?? Path.Combine(_environment.ContentRootPath, "wwwroot");
+            ?? Path.Combine(
+                _environment.ContentRootPath,
+                "wwwroot");
 
-        //string imagePath = Path.Combine(webRoot, relativePath);
-
-        if (!File.Exists(imagePath))
-            throw new FileNotFoundException(
-                "Card background image not found.", imagePath);
-
+        // Generated image output directory.
         string outputDirectory = Path.Combine(
             webRoot,
             "generated",
@@ -89,6 +124,7 @@ public sealed class CardImageRenderer
             outputDirectory,
             $"{recipient.RecipientId}.png");
 
+        // Load original card background.
         using var bitmap = SKBitmap.Decode(imagePath)
             ?? throw new InvalidOperationException(
                 "Unable to decode card background image.");
@@ -110,35 +146,51 @@ public sealed class CardImageRenderer
 
         canvas.Clear(SKColors.White);
 
+        // Draw background image.
         canvas.DrawBitmap(
             bitmap,
             new SKRect(0, 0, width, height));
 
+        // Get recipient and custom parameter values.
         var values = GetValues(job, recipient);
 
         // Default text positions.
-        // These will need adjustment to match your actual invitation design.
-        DrawText(
-            canvas, values["1"],
-            width / 2f, 650,
-            52, SKColors.DarkRed, true);
+        // Adjust these positions to match your actual card design.
 
         DrawText(
-            canvas, values["2"],
-            width / 2f, 730,
-            38, SKColors.Black, false);
+            canvas,
+            values["1"],
+            width / 2f,
+            650,
+            52,
+            SKColors.DarkRed,
+            true);
 
         DrawText(
-            canvas, values["3"],
-            width / 2f, 800,
-            30, SKColors.DarkSlateGray, false);
+            canvas,
+            values["2"],
+            width / 2f,
+            730,
+            38,
+            SKColors.Black,
+            false);
+
+        DrawText(
+            canvas,
+            values["3"],
+            width / 2f,
+            800,
+            30,
+            SKColors.DarkSlateGray,
+            false);
 
         canvas.Flush();
 
         using var image = surface.Snapshot();
 
         using var data = image.Encode(
-            SKEncodedImageFormat.Png, 100)
+            SKEncodedImageFormat.Png,
+            100)
             ?? throw new InvalidOperationException(
                 "Unable to encode generated PNG.");
 
@@ -149,6 +201,13 @@ public sealed class CardImageRenderer
             imageBytes,
             ct);
 
+        _logger.LogInformation(
+            "Generated card successfully. JobId={JobId}, RecipientId={RecipientId}, OutputFile={OutputFile}",
+            job.JobId,
+            recipient.RecipientId,
+            outputFile);
+
+        // Return the public relative URL.
         return "/generated/bulk-jobs/" +
                job.JobId.ToString("N") + "/" +
                recipient.RecipientId + ".png";
@@ -169,7 +228,8 @@ public sealed class CardImageRenderer
 
         try
         {
-            if (!string.IsNullOrWhiteSpace(job.ParameterValuesJson))
+            if (!string.IsNullOrWhiteSpace(
+                job.ParameterValuesJson))
             {
                 var custom =
                     JsonSerializer.Deserialize<Dictionary<string, string>>(
@@ -178,13 +238,17 @@ public sealed class CardImageRenderer
                 if (custom != null)
                 {
                     foreach (var item in custom)
-                        values[item.Key] = item.Value ?? string.Empty;
+                    {
+                        values[item.Key] =
+                            item.Value ?? string.Empty;
+                    }
                 }
             }
         }
-        catch (JsonException)
+        catch (JsonException ex)
         {
-            // Ignore invalid optional parameter JSON.
+            // Invalid optional parameter JSON.
+            // Log the issue without stopping card generation.
         }
 
         return values;
@@ -204,9 +268,13 @@ public sealed class CardImageRenderer
 
         using var typeface = SKTypeface.FromFamilyName(
             "Arial",
-            bold ? SKFontStyle.Bold : SKFontStyle.Normal);
+            bold
+                ? SKFontStyle.Bold
+                : SKFontStyle.Normal);
 
-        using var font = new SKFont(typeface, size);
+        using var font = new SKFont(
+            typeface,
+            size);
 
         using var paint = new SKPaint
         {
