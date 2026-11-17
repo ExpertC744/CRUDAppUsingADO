@@ -1,6 +1,6 @@
-﻿using CRUDAppUsingADO.Models.Bulk;
+﻿
+using CRUDAppUsingADO.Models.Bulk;
 using Microsoft.AspNetCore.WebUtilities;
-using System.Net.Http;
 
 namespace CRUDAppUsingADO.Services;
 
@@ -21,7 +21,7 @@ public sealed class BhashWhatsAppService
     }
 
     public async Task<DeliveryResult> SendWhatsAppAsync(
-        int adminId,
+        Guid adminUserId,
         string name,
         string mobile,
         string templateName,
@@ -34,21 +34,26 @@ public sealed class BhashWhatsAppService
         try
         {
             if (string.IsNullOrWhiteSpace(templateName))
+            {
                 return new DeliveryResult
                 {
                     Success = false,
                     Response = "WhatsApp template name is missing."
                 };
+            }
 
-            string phone = NormalizeIndianMobile(mobile);
+            string phone = NormalizeMobile(mobile);
 
-            if (phone.Length != 12 || !phone.StartsWith("91"))
+            if (string.IsNullOrWhiteSpace(phone) || phone.Length < 7)
+            {
                 return new DeliveryResult
                 {
                     Success = false,
-                    Response = "Invalid Indian mobile number."
+                    Response = "Invalid mobile number."
                 };
+            }
 
+            // TemplateType: 1 = Utility, 2 = Marketing.
             string endpointKey = utilMark == 1
                 ? "BhashSMS:UtilityEndpoint"
                 : "BhashSMS:MarketingEndpoint";
@@ -56,20 +61,21 @@ public sealed class BhashWhatsAppService
             string endpoint = _configuration[endpointKey] ?? "";
 
             if (string.IsNullOrWhiteSpace(endpoint))
+            {
                 return new DeliveryResult
                 {
                     Success = false,
                     Response = $"Configuration {endpointKey} is missing."
                 };
+            }
 
-            // Preserve the old Certwala account-selection logic.
-            string accountPath = adminId switch
-            {
-                4885 => "BhashSMS:AdminAccounts:4885",
-                2393 => "BhashSMS:AdminAccounts:2393",
-                5887 => "BhashSMS:AdminAccounts:5887",
-                _ => "BhashSMS:Default"
-            };
+            // Find the numeric BhashSMS account key configured for this admin GUID.
+            string? accountKey = _configuration[$"BhashSMS:AdminAccountMap:{adminUserId:D}"];
+
+            // If no mapping exists, use the default BhashSMS account.
+            string accountPath = !string.IsNullOrWhiteSpace(accountKey)
+                ? $"BhashSMS:AdminAccounts:{accountKey}"
+                : "BhashSMS:Default";
 
             string user = _configuration[$"{accountPath}:User"] ?? "";
             string password = _configuration[$"{accountPath}:Password"] ?? "";
@@ -79,10 +85,15 @@ public sealed class BhashWhatsAppService
                 string.IsNullOrWhiteSpace(password) ||
                 string.IsNullOrWhiteSpace(sender))
             {
+                _logger.LogError(
+                    "BhashSMS account configuration is incomplete for AdminUserId {AdminUserId}. AccountPath={AccountPath}",
+                    adminUserId,
+                    accountPath);
+
                 return new DeliveryResult
                 {
                     Success = false,
-                    Response = $"BhashSMS account configuration is incomplete for Admin ID {adminId}."
+                    Response = $"BhashSMS account configuration is incomplete for AdminUserId {adminUserId}."
                 };
             }
 
@@ -97,7 +108,7 @@ public sealed class BhashWhatsAppService
                 ["stype"] = "normal"
             };
 
-            // Keep the parameter order because {{1}}, {{2}}, etc. are positional.
+            // Keep parameter order because {{1}}, {{2}}, etc. are positional.
             if (parameters is { Count: > 0 })
             {
                 query["Params"] = string.Join(
@@ -105,33 +116,56 @@ public sealed class BhashWhatsAppService
                     parameters.Select(p => p?.Trim() ?? ""));
             }
 
-            AddMediaParameters(query, name, templateType, mediaUrl);
+            AddMediaParameters(
+                query,
+                name,
+                templateType,
+                mediaUrl);
 
-            string requestUrl = QueryHelpers.AddQueryString(endpoint, query);
+            string requestUrl = QueryHelpers.AddQueryString(
+                endpoint,
+                query);
 
             var client = _httpClientFactory.CreateClient("BhashSMS");
+
+            _logger.LogInformation(
+                "Sending WhatsApp message. AdminUserId={AdminUserId}, Phone={Phone}, Template={TemplateName}, AccountPath={AccountPath}",
+                adminUserId,
+                phone,
+                templateName,
+                accountPath);
 
             using var response = await client.GetAsync(
                 requestUrl,
                 cancellationToken);
 
-            string responseText = await response.Content.ReadAsStringAsync(
-                cancellationToken);
+            string responseText =
+                await response.Content.ReadAsStringAsync(
+                    cancellationToken);
 
             responseText = responseText.Trim();
 
-            // Old Certwala example returned responses such as S.44037.
-            // Do not treat every non-empty response as a successful send.
+            // BhashSMS accepted response example: S.44037
             bool providerAccepted =
                 response.IsSuccessStatusCode &&
-                responseText.StartsWith("S.", StringComparison.OrdinalIgnoreCase);
+                responseText.StartsWith(
+                    "S.",
+                    StringComparison.OrdinalIgnoreCase);
 
             if (!providerAccepted)
             {
                 _logger.LogWarning(
-                    "BhashSMS rejected message for AdminId {AdminId}. HTTP {StatusCode}.",
-                    adminId,
-                    (int)response.StatusCode);
+                    "BhashSMS rejected message for AdminUserId {AdminUserId}. HTTP {StatusCode}. Response={Response}",
+                    adminUserId,
+                    (int)response.StatusCode,
+                    responseText);
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "BhashSMS accepted message for AdminUserId {AdminUserId}. Response={Response}",
+                    adminUserId,
+                    responseText);
             }
 
             return new DeliveryResult
@@ -146,10 +180,7 @@ public sealed class BhashWhatsAppService
         }
         catch (Exception ex)
         {
-            _logger.LogError(
-                ex,
-                "BhashSMS delivery failed for AdminId {AdminId}.",
-                adminId);
+            _logger.LogError(ex, "BhashSMS delivery failed for AdminUserId {AdminUserId}.", adminUserId);
 
             return new DeliveryResult
             {
@@ -159,18 +190,10 @@ public sealed class BhashWhatsAppService
         }
     }
 
-    private static string NormalizeIndianMobile(string? mobile)
+    private static string NormalizeMobile(string? mobile)
     {
-        string phone = new string(
-            (mobile ?? "").Where(char.IsDigit).ToArray());
-
-        if (phone.StartsWith("0"))
-            phone = phone[1..];
-
-        if (phone.Length == 10)
-            phone = "91" + phone;
-
-        return phone;
+        // Keep only numeric digits.
+        return new string((mobile ?? "").Where(char.IsDigit).ToArray());
     }
 
     private static void AddMediaParameters(
@@ -179,9 +202,10 @@ public sealed class BhashWhatsAppService
         string? templateType,
         string? mediaUrl)
     {
-        if (string.IsNullOrWhiteSpace(templateType) ||
-            string.IsNullOrWhiteSpace(mediaUrl))
+        if (string.IsNullOrWhiteSpace(templateType) || string.IsNullOrWhiteSpace(mediaUrl))
+        {
             return;
+        }
 
         switch (templateType.Trim().ToLowerInvariant())
         {

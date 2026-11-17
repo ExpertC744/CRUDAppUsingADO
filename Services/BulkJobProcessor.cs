@@ -115,27 +115,92 @@ public sealed class BulkJobProcessor
                 }
 
                 // 7. Build public image URL
-                string publicBaseUrl =
-                    _configuration["Frontend:PublicUrl"]?.TrimEnd('/')
-                    ?? throw new InvalidOperationException(
-                        "Frontend:PublicUrl is missing from configuration.");
+                // 7. Build public image URL only when WhatsApp needs media.
+                string? mediaUrl = null;
 
-                string mediaUrl =
-                    publicBaseUrl + "/" + generatedImage.TrimStart('/');
+                bool whatsappNeedsMedia =
+                    sendWhatsApp &&
+                    job.TemplateSendType is 2 or 3 or 4;
+
+                if (whatsappNeedsMedia)
+                {
+                    string publicBaseUrl =
+                        _configuration["BulkMedia:PublicBaseUrl"]?.TrimEnd('/')
+                        ?? throw new InvalidOperationException(
+                            "BulkMedia:PublicBaseUrl is missing from configuration.");
+
+                    if (!Uri.TryCreate(
+                            publicBaseUrl,
+                            UriKind.Absolute,
+                            out var publicUri) ||
+                        publicUri.Scheme != Uri.UriSchemeHttps)
+                    {
+                        throw new InvalidOperationException(
+                            "BulkMedia:PublicBaseUrl must be a valid HTTPS URL.");
+                    }
+
+                    mediaUrl = publicBaseUrl + "/" +
+                        generatedImage.TrimStart('/');
+                }
+                //            string publicBaseUrl =
+                //_configuration["BulkMedia:PublicBaseUrl"]?.TrimEnd('/')
+                //?? throw new InvalidOperationException(
+                //    "BulkMedia:PublicBaseUrl is missing from configuration.");
+
+                //            if (!Uri.TryCreate(
+                //                    publicBaseUrl,
+                //                    UriKind.Absolute,
+                //                    out var publicUri) ||
+                //                publicUri.Scheme != Uri.UriSchemeHttps)
+                //            {
+                //                throw new InvalidOperationException(
+                //                    "BulkMedia:PublicBaseUrl must be a valid HTTPS URL.");
+                //            }
+
+                //            string mediaUrl = publicBaseUrl + "/" +
+                //                generatedImage.TrimStart('/');
 
                 // 8. Prepare WhatsApp template parameters
-                var parameters = new List<string>
+                var parameterValues = new Dictionary<int, string>
                 {
-                    recipient.Text1 ?? recipientName,
-                    recipient.Text2 ?? "",
-                    recipient.Text3 ?? "",
-                    recipient.Text4 ?? ""
+                    [1] = recipient.Text1 ?? recipientName,
+                    [2] = recipient.Text2 ?? "",
+                    [3] = recipient.Text3 ?? "",
+                    [4] = recipient.Text4 ?? ""
                 };
+
+                // Apply the job-level parameterValues submitted in the API request.
+                // These override recipient Text1-Text4, matching CardImageRenderer.
+                if (!string.IsNullOrWhiteSpace(job.ParameterValuesJson))
+                {
+                    var customValues =
+                        System.Text.Json.JsonSerializer
+                            .Deserialize<Dictionary<string, string>>(
+                                job.ParameterValuesJson);
+
+                    if (customValues != null)
+                    {
+                        foreach (var item in customValues)
+                        {
+                            if (int.TryParse(item.Key, out int parameterNumber) &&
+                                parameterNumber >= 1 &&
+                                parameterNumber <= 4)
+                            {
+                                parameterValues[parameterNumber] =
+                                    item.Value ?? "";
+                            }
+                        }
+                    }
+                }
 
                 int parameterCount = Math.Clamp(
                     job.TemplateParameterCount,
                     0,
-                    parameters.Count);
+                    4);
+
+                var parameters = Enumerable.Range(1, parameterCount)
+                    .Select(number => parameterValues[number])
+                    .ToList();
 
                 parameters = parameters
                     .Take(parameterCount)
@@ -202,7 +267,7 @@ public sealed class BulkJobProcessor
                     {
                         // Existing BhashWhatsAppService expects int adminId.
                         // Passing 0 selects the configured Default account.
-                        int bhashAccountAdminId = 0;
+                        Guid bhashAccountAdminId = job.AdminUserId;
 
                         _logger.LogInformation(
                             "WhatsApp template {TemplateName}: TemplateType={TemplateType}, SendType={SendType}, EndpointType={EndpointType}, MessageType={MessageType}",
@@ -239,8 +304,7 @@ public sealed class BulkJobProcessor
                     }
                     else
                     {
-                        string personalizedMessage =
-                            BuildMessage(job, recipient);
+                        string personalizedMessage = BuildMessage(job, recipient, parameterValues);
 
                         emailResult =
                             await _emailService.SendAsync(
@@ -329,26 +393,20 @@ public sealed class BulkJobProcessor
     }
 
     private static string BuildMessage(
-        BulkJobDetails job,
-        BulkRecipientDetails recipient)
+    BulkJobDetails job,
+    BulkRecipientDetails recipient,
+    Dictionary<int, string> parameterValues)
     {
         string message = job.TemplateMessage ?? "Hello {{1}}";
 
-        message = message.Replace(
-            "{{1}}",
-            recipient.Text1 ?? recipient.FullName ?? "");
-
-        message = message.Replace(
-            "{{2}}",
-            recipient.Text2 ?? "");
-
-        message = message.Replace(
-            "{{3}}",
-            recipient.Text3 ?? "");
-
-        message = message.Replace(
-            "{{4}}",
-            recipient.Text4 ?? "");
+        for (int i = 1; i <= 4; i++)
+        {
+            message = message.Replace(
+                "{{" + i + "}}",
+                parameterValues.TryGetValue(i, out var value)
+                    ? value
+                    : "");
+        }
 
         message = message.Replace(
             "{{Name}}",
