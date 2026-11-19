@@ -298,12 +298,18 @@ var razorpayKeySecret = builder.Configuration["Razorpay:KeySecret"];
 if (string.IsNullOrWhiteSpace(razorpayKeyId) ||
     string.IsNullOrWhiteSpace(razorpayKeySecret))
 {
-    throw new InvalidOperationException(
-        "Razorpay KeyId or KeySecret is missing from configuration.");
+    throw new InvalidOperationException("Razorpay KeyId or KeySecret is missing from configuration.");
 }
 
 builder.Services.AddSingleton(
     new RazorpayClient(razorpayKeyId, razorpayKeySecret));
+
+
+Console.WriteLine($"Razorpay Key ID loaded: {!string.IsNullOrWhiteSpace(razorpayKeyId)}");
+
+Console.WriteLine($"Razorpay Secret loaded: {!string.IsNullOrWhiteSpace(razorpayKeySecret)}");
+
+//Console.WriteLine($"Razorpay Mode: {razorpayKeyId?.StartsWith("rzp_test_") == true ? "TEST" : razorpayKeyId?.StartsWith("rzp_live_") == true ? "LIVE" : "UNKNOWN"}");
 
 var app = builder.Build();
 
