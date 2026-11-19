@@ -191,8 +191,8 @@ builder.Services.AddCors(options =>
     {
         policy
             .WithOrigins(
-                "http://eventcert.com/",
-                "https://eventcert.com"
+                "http://localhost:5173/",
+                "https://localhost:5173"
             )
             .AllowAnyHeader()
             .AllowAnyMethod()

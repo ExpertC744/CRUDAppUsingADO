@@ -125,9 +125,9 @@ public sealed class BulkJobProcessor
                 if (whatsappNeedsMedia)
                 {
                     string publicBaseUrl =
-                        _configuration["BulkMedia:PublicBaseUrl"]?.TrimEnd('/')
-                        ?? throw new InvalidOperationException(
-                            "BulkMedia:PublicBaseUrl is missing from configuration.");
+    _configuration["BhashSMS:BulkMedia:PublicBaseUrl"]?.TrimEnd('/')
+    ?? throw new InvalidOperationException(
+        "BhashSMS:BulkMedia:PublicBaseUrl is missing from configuration.");
 
                     if (!Uri.TryCreate(
                             publicBaseUrl,
@@ -292,6 +292,7 @@ public sealed class BulkJobProcessor
                 }
 
                 // 11. Send Email
+                // 11. Send Email
                 if (sendEmail)
                 {
                     if (string.IsNullOrWhiteSpace(recipientEmail))
@@ -304,16 +305,16 @@ public sealed class BulkJobProcessor
                     }
                     else
                     {
-                        string personalizedMessage = BuildMessage(job, recipient, parameterValues);
+                        string personalizedMessage =
+                            BuildMessage(job, recipient, parameterValues);
 
-                        emailResult =
-                            await _emailService.SendAsync(
-                                recipientName,
-                                recipientEmail,
-                                personalizedMessage,
-                                mediaUrl,
-                                generatedImage,
-                                ct);
+                        emailResult = await _emailService.SendAsync(
+                            recipientName,
+                            recipientEmail,
+                            personalizedMessage,
+                            mediaUrl,
+                            generatedImage,
+                            ct);
                     }
                 }
 

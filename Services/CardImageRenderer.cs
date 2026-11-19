@@ -22,68 +22,127 @@ public sealed class CardImageRenderer
     private string ResolveImagePath(string imagePath)
     {
         if (string.IsNullOrWhiteSpace(imagePath))
-        {
             throw new FileNotFoundException(
                 "Card background image path is empty.");
-        }
 
-        // Convert URL path into a physical relative path.
         string relativePath = Uri.UnescapeDataString(imagePath.Trim())
             .Replace('\\', '/')
             .TrimStart('/');
+
+        if (Path.IsPathRooted(relativePath) ||
+            relativePath.Split('/').Any(x => x == ".."))
+        {
+            throw new InvalidOperationException(
+                "Invalid card background image path.");
+        }
 
         string webRoot = _environment.WebRootPath
             ?? Path.Combine(
                 _environment.ContentRootPath,
                 "wwwroot");
 
-        // Check possible physical locations.
-        string[] candidates =
+        string[] allowedRoots =
         {
-            Path.GetFullPath(
-                Path.Combine(webRoot, relativePath)),
+        Path.GetFullPath(webRoot),
+        Path.GetFullPath(
+            Path.Combine(_environment.ContentRootPath, "uploads"))
+    };
 
-            Path.GetFullPath(
-                Path.Combine(
-                    _environment.ContentRootPath,
-                    "wwwroot",
-                    relativePath)),
-
-            Path.GetFullPath(
-                Path.Combine(
-                    _environment.ContentRootPath,
-                    relativePath))
-        };
-
-        _logger.LogInformation(
-            "Resolving card image. DatabasePath={DatabasePath}, WebRootPath={WebRootPath}, ContentRootPath={ContentRootPath}",
-            imagePath,
-            webRoot,
-            _environment.ContentRootPath);
-
-        foreach (string candidate in candidates)
+        foreach (string root in allowedRoots)
         {
+            string candidate = Path.GetFullPath(
+                Path.Combine(root, relativePath));
+
+            // Prevent directory traversal.
+            string prefix = root.TrimEnd(
+                Path.DirectorySeparatorChar) +
+                Path.DirectorySeparatorChar;
+
+            if (!candidate.StartsWith(
+                prefix,
+                StringComparison.OrdinalIgnoreCase))
+                continue;
+
             _logger.LogInformation(
-                "Checking card image path: {ImagePath}",
-                candidate);
+                "Checking card image: {Path}", candidate);
 
             if (File.Exists(candidate))
             {
                 _logger.LogInformation(
-                    "Card background image found: {ImagePath}",
-                    candidate);
+                    "Card image found: {Path}", candidate);
 
                 return candidate;
             }
         }
 
         throw new FileNotFoundException(
-            "Card background image not found. " +
-            $"Database path: {imagePath}. " +
-            $"WebRootPath: {webRoot}. " +
-            $"ContentRootPath: {_environment.ContentRootPath}. " +
-            $"Checked paths: {string.Join(" | ", candidates)}");
+            $"Card background image not found: {imagePath}");
     }
+    //private string ResolveImagePath(string imagePath)
+    //{
+    //    if (string.IsNullOrWhiteSpace(imagePath))
+    //    {
+    //        throw new FileNotFoundException(
+    //            "Card background image path is empty.");
+    //    }
+
+    //    // Convert URL path into a physical relative path.
+    //    string relativePath = Uri.UnescapeDataString(imagePath.Trim())
+    //        .Replace('\\', '/')
+    //        .TrimStart('/');
+
+    //    string webRoot = _environment.WebRootPath
+    //        ?? Path.Combine(
+    //            _environment.ContentRootPath,
+    //            "wwwroot");
+
+    //    // Check possible physical locations.
+    //    string[] candidates =
+    //    {
+    //        Path.GetFullPath(
+    //            Path.Combine(webRoot, relativePath)),
+
+    //        Path.GetFullPath(
+    //            Path.Combine(
+    //                _environment.ContentRootPath,
+    //                "wwwroot",
+    //                relativePath)),
+
+    //        Path.GetFullPath(
+    //            Path.Combine(
+    //                _environment.ContentRootPath,
+    //                relativePath))
+    //    };
+
+    //    _logger.LogInformation(
+    //        "Resolving card image. DatabasePath={DatabasePath}, WebRootPath={WebRootPath}, ContentRootPath={ContentRootPath}",
+    //        imagePath,
+    //        webRoot,
+    //        _environment.ContentRootPath);
+
+    //    foreach (string candidate in candidates)
+    //    {
+    //        _logger.LogInformation(
+    //            "Checking card image path: {ImagePath}",
+    //            candidate);
+
+    //        if (File.Exists(candidate))
+    //        {
+    //            _logger.LogInformation(
+    //                "Card background image found: {ImagePath}",
+    //                candidate);
+
+    //            return candidate;
+    //        }
+    //    }
+
+    //    throw new FileNotFoundException(
+    //        "Card background image not found. " +
+    //        $"Database path: {imagePath}. " +
+    //        $"WebRootPath: {webRoot}. " +
+    //        $"ContentRootPath: {_environment.ContentRootPath}. " +
+    //        $"Checked paths: {string.Join(" | ", candidates)}");
+    //}
 
     public async Task<string> GenerateAsync(
         BulkJobDetails job,

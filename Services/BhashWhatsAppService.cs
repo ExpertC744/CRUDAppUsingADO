@@ -35,25 +35,17 @@ public sealed class BhashWhatsAppService
         {
             if (string.IsNullOrWhiteSpace(templateName))
             {
-                return new DeliveryResult
-                {
-                    Success = false,
-                    Response = "WhatsApp template name is missing."
-                };
+                return Fail("WhatsApp template name is missing.");
             }
 
             string phone = NormalizeMobile(mobile);
 
-            if (string.IsNullOrWhiteSpace(phone) || phone.Length < 7)
+            if (phone.Length < 10)
             {
-                return new DeliveryResult
-                {
-                    Success = false,
-                    Response = "Invalid mobile number."
-                };
+                return Fail("Invalid mobile number.");
             }
 
-            // TemplateType: 1 = Utility, 2 = Marketing.
+            // 1 = Utility, 2 = Marketing
             string endpointKey = utilMark == 1
                 ? "BhashSMS:UtilityEndpoint"
                 : "BhashSMS:MarketingEndpoint";
@@ -62,17 +54,13 @@ public sealed class BhashWhatsAppService
 
             if (string.IsNullOrWhiteSpace(endpoint))
             {
-                return new DeliveryResult
-                {
-                    Success = false,
-                    Response = $"Configuration {endpointKey} is missing."
-                };
+                return Fail($"BhashSMS endpoint missing: {endpointKey}");
             }
 
-            // Find the numeric BhashSMS account key configured for this admin GUID.
-            string? accountKey = _configuration[$"BhashSMS:AdminAccountMap:{adminUserId:D}"];
+            // Resolve admin-specific account.
+            string? accountKey =
+                _configuration[$"BhashSMS:AdminAccountMap:{adminUserId:D}"];
 
-            // If no mapping exists, use the default BhashSMS account.
             string accountPath = !string.IsNullOrWhiteSpace(accountKey)
                 ? $"BhashSMS:AdminAccounts:{accountKey}"
                 : "BhashSMS:Default";
@@ -85,18 +73,10 @@ public sealed class BhashWhatsAppService
                 string.IsNullOrWhiteSpace(password) ||
                 string.IsNullOrWhiteSpace(sender))
             {
-                _logger.LogError(
-                    "BhashSMS account configuration is incomplete for AdminUserId {AdminUserId}. AccountPath={AccountPath}",
-                    adminUserId,
-                    accountPath);
-
-                return new DeliveryResult
-                {
-                    Success = false,
-                    Response = $"BhashSMS account configuration is incomplete for AdminUserId {adminUserId}."
-                };
+                return Fail("BhashSMS account configuration is incomplete.");
             }
 
+            // 2. Prepare BhashSMS API parameters.
             var query = new Dictionary<string, string?>
             {
                 ["user"] = user,
@@ -108,92 +88,103 @@ public sealed class BhashWhatsAppService
                 ["stype"] = "normal"
             };
 
-            // Keep parameter order because {{1}}, {{2}}, etc. are positional.
+            // 3. Template parameters.
             if (parameters is { Count: > 0 })
             {
                 query["Params"] = string.Join(
                     ",",
-                    parameters.Select(p => p?.Trim() ?? ""));
+                    parameters.Select(x => x?.Trim() ?? ""));
             }
 
+            // 4. Image / Video / Document.
             AddMediaParameters(
                 query,
                 name,
                 templateType,
                 mediaUrl);
 
-            string requestUrl = QueryHelpers.AddQueryString(
-                endpoint,
-                query);
+            // 5. Generate API request URL.
+            string requestUrl =
+                QueryHelpers.AddQueryString(endpoint, query);
 
             var client = _httpClientFactory.CreateClient("BhashSMS");
 
             _logger.LogInformation(
-                "Sending WhatsApp message. AdminUserId={AdminUserId}, Phone={Phone}, Template={TemplateName}, AccountPath={AccountPath}",
-                adminUserId,
+                "BhashSMS request: Phone={Phone}, Template={Template}, Endpoint={Endpoint}, MediaType={MediaType}, HasMedia={HasMedia}",
                 phone,
                 templateName,
-                accountPath);
+                endpointKey,
+                templateType,
+                !string.IsNullOrWhiteSpace(mediaUrl));
 
             using var response = await client.GetAsync(
                 requestUrl,
                 cancellationToken);
 
             string responseText =
-                await response.Content.ReadAsStringAsync(
-                    cancellationToken);
+                (await response.Content.ReadAsStringAsync(
+                    cancellationToken)).Trim();
 
-            responseText = responseText.Trim();
-
-            // BhashSMS accepted response example: S.44037
-            bool providerAccepted =
+            bool success =
                 response.IsSuccessStatusCode &&
                 responseText.StartsWith(
                     "S.",
                     StringComparison.OrdinalIgnoreCase);
 
-            if (!providerAccepted)
+            if (!success)
             {
                 _logger.LogWarning(
-                    "BhashSMS rejected message for AdminUserId {AdminUserId}. HTTP {StatusCode}. Response={Response}",
-                    adminUserId,
+                    "BhashSMS failed. HTTP={StatusCode}, Response={Response}",
                     (int)response.StatusCode,
                     responseText);
             }
             else
             {
                 _logger.LogInformation(
-                    "BhashSMS accepted message for AdminUserId {AdminUserId}. Response={Response}",
-                    adminUserId,
+                    "BhashSMS accepted message. Response={Response}",
                     responseText);
             }
 
             return new DeliveryResult
             {
-                Success = providerAccepted,
+                Success = success,
                 Response = responseText
             };
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "BhashSMS delivery failed for AdminUserId {AdminUserId}.", adminUserId);
+            _logger.LogError(ex, "BhashSMS delivery exception.");
 
-            return new DeliveryResult
-            {
-                Success = false,
-                Response = ex.Message
-            };
+            return Fail(ex.Message);
         }
+    }
+
+    private static DeliveryResult Fail(string message)
+    {
+        return new DeliveryResult
+        {
+            Success = false,
+            Response = message
+        };
     }
 
     private static string NormalizeMobile(string? mobile)
     {
-        // Keep only numeric digits.
-        return new string((mobile ?? "").Where(char.IsDigit).ToArray());
+        string phone = new string(
+            (mobile ?? "").Where(char.IsDigit).ToArray());
+
+        if (phone.Length == 12 && phone.StartsWith("91"))
+            phone = phone.Substring(2);
+
+        if (phone.Length == 11 && phone.StartsWith("0"))
+            phone = phone.Substring(1);
+
+        return phone;
     }
 
     private static void AddMediaParameters(
@@ -202,31 +193,46 @@ public sealed class BhashWhatsAppService
         string? templateType,
         string? mediaUrl)
     {
-        if (string.IsNullOrWhiteSpace(templateType) || string.IsNullOrWhiteSpace(mediaUrl))
-        {
+        if (string.IsNullOrWhiteSpace(templateType))
             return;
-        }
 
         switch (templateType.Trim().ToLowerInvariant())
         {
             case "textimage":
             case "textbuttonimage":
+
+                if (string.IsNullOrWhiteSpace(mediaUrl))
+                    throw new InvalidOperationException(
+                        "Image URL is missing for WhatsApp image message.");
+
                 query["htype"] = "image";
                 query["url"] = mediaUrl;
                 break;
 
             case "textvideo":
             case "textbuttonvideo":
+
+                if (string.IsNullOrWhiteSpace(mediaUrl))
+                    throw new InvalidOperationException(
+                        "Video URL is missing for WhatsApp video message.");
+
                 query["htype"] = "video";
                 query["url"] = mediaUrl;
                 break;
 
             case "textdocument":
             case "textpdf":
+
+                if (string.IsNullOrWhiteSpace(mediaUrl))
+                    throw new InvalidOperationException(
+                        "Document URL is missing for WhatsApp document message.");
+
                 query["htype"] = "document";
-                query["fname"] = string.IsNullOrWhiteSpace(recipientName)
-                    ? "Card.pdf"
-                    : recipientName.Trim() + ".pdf";
+                query["fname"] =
+                    string.IsNullOrWhiteSpace(recipientName)
+                        ? "Card.pdf"
+                        : recipientName.Trim() + ".pdf";
+
                 query["url"] = mediaUrl;
                 break;
         }
