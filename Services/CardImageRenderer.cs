@@ -1,5 +1,4 @@
-﻿
-using CRUDAppUsingADO.Models.Bulk;
+﻿using CRUDAppUsingADO.Models.Bulk;
 using SkiaSharp;
 using System.Text.Json;
 
@@ -43,10 +42,10 @@ public sealed class CardImageRenderer
 
         string[] allowedRoots =
         {
-        Path.GetFullPath(webRoot),
-        Path.GetFullPath(
-            Path.Combine(_environment.ContentRootPath, "uploads"))
-    };
+            Path.GetFullPath(webRoot),
+            Path.GetFullPath(
+                Path.Combine(_environment.ContentRootPath, "uploads"))
+        };
 
         foreach (string root in allowedRoots)
         {
@@ -78,71 +77,58 @@ public sealed class CardImageRenderer
         throw new FileNotFoundException(
             $"Card background image not found: {imagePath}");
     }
-    //private string ResolveImagePath(string imagePath)
-    //{
-    //    if (string.IsNullOrWhiteSpace(imagePath))
-    //    {
-    //        throw new FileNotFoundException(
-    //            "Card background image path is empty.");
-    //    }
 
-    //    // Convert URL path into a physical relative path.
-    //    string relativePath = Uri.UnescapeDataString(imagePath.Trim())
-    //        .Replace('\\', '/')
-    //        .TrimStart('/');
+    // File name = user name, e.g. "Rahul_Patil.png".
+    // Letters and digits are kept, everything else becomes "_".
+    // If the same name already exists in this job folder: "Rahul_Patil_14.png".
+    private static string BuildFileName(
+        string outputDirectory,
+        BulkRecipientDetails recipient)
+    {
+        var chars = (recipient.FullName ?? "")
+            .Trim()
+            .Select(c => char.IsLetterOrDigit(c) ? c : '_')
+            .ToArray();
 
-    //    string webRoot = _environment.WebRootPath
-    //        ?? Path.Combine(
-    //            _environment.ContentRootPath,
-    //            "wwwroot");
+        string safe = new string(chars).Trim('_');
 
-    //    // Check possible physical locations.
-    //    string[] candidates =
-    //    {
-    //        Path.GetFullPath(
-    //            Path.Combine(webRoot, relativePath)),
+        while (safe.Contains("__"))
+            safe = safe.Replace("__", "_");
 
-    //        Path.GetFullPath(
-    //            Path.Combine(
-    //                _environment.ContentRootPath,
-    //                "wwwroot",
-    //                relativePath)),
+        if (safe.Length > 80)
+            safe = safe[..80].Trim('_');
 
-    //        Path.GetFullPath(
-    //            Path.Combine(
-    //                _environment.ContentRootPath,
-    //                relativePath))
-    //    };
+        if (string.IsNullOrWhiteSpace(safe))
+            safe = recipient.RecipientId.ToString();
 
-    //    _logger.LogInformation(
-    //        "Resolving card image. DatabasePath={DatabasePath}, WebRootPath={WebRootPath}, ContentRootPath={ContentRootPath}",
-    //        imagePath,
-    //        webRoot,
-    //        _environment.ContentRootPath);
+        string fileName = safe + ".png";
 
-    //    foreach (string candidate in candidates)
-    //    {
-    //        _logger.LogInformation(
-    //            "Checking card image path: {ImagePath}",
-    //            candidate);
+        if (File.Exists(Path.Combine(outputDirectory, fileName)))
+            fileName = $"{safe}_{recipient.RecipientId}.png";
 
-    //        if (File.Exists(candidate))
-    //        {
-    //            _logger.LogInformation(
-    //                "Card background image found: {ImagePath}",
-    //                candidate);
+        return fileName;
+    }
 
-    //            return candidate;
-    //        }
-    //    }
+    // true when the saved design already contains its own content (every design saved from the
+    // Custom+ screen does: the image already has this user's text drawn into it)
+    private static bool DesignAlreadyHasText(BulkJobDetails job)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(job.CanvasJson))
+                return false;
 
-    //    throw new FileNotFoundException(
-    //        "Card background image not found. " +
-    //        $"Database path: {imagePath}. " +
-    //        $"WebRootPath: {webRoot}. " +
-    //        $"ContentRootPath: {_environment.ContentRootPath}. " +
-    //        $"Checked paths: {string.Join(" | ", candidates)}");
-    //}
+            using var doc = JsonDocument.Parse(job.CanvasJson);
+
+            return doc.RootElement.TryGetProperty("objects", out var objects) &&
+                   objects.ValueKind == JsonValueKind.Array &&
+                   objects.GetArrayLength() > 0;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
 
     public async Task<string> GenerateAsync(
         BulkJobDetails job,
@@ -179,9 +165,9 @@ public sealed class CardImageRenderer
 
         Directory.CreateDirectory(outputDirectory);
 
-        string outputFile = Path.Combine(
-            outputDirectory,
-            $"{recipient.RecipientId}.png");
+        string fileName = BuildFileName(outputDirectory, recipient);
+
+        string outputFile = Path.Combine(outputDirectory, fileName);
 
         // Load original card background.
         using var bitmap = SKBitmap.Decode(imagePath)
@@ -210,38 +196,18 @@ public sealed class CardImageRenderer
             bitmap,
             new SKRect(0, 0, width, height));
 
-        // Get recipient and custom parameter values.
-        var values = GetValues(job, recipient);
+        // The image saved by Custom+ already has this user's text drawn into it,
+        // so nothing is drawn on top (that is what showed every text twice).
+        // Only a plain background image (for example uploaded through Postman, no design content)
+        // gets the default text lines below.
+        if (!DesignAlreadyHasText(job))
+        {
+            var values = GetValues(job, recipient);
 
-        // Default text positions.
-        // Adjust these positions to match your actual card design.
-
-        DrawText(
-            canvas,
-            values["1"],
-            width / 2f,
-            650,
-            52,
-            SKColors.DarkRed,
-            true);
-
-        DrawText(
-            canvas,
-            values["2"],
-            width / 2f,
-            730,
-            38,
-            SKColors.Black,
-            false);
-
-        DrawText(
-            canvas,
-            values["3"],
-            width / 2f,
-            800,
-            30,
-            SKColors.DarkSlateGray,
-            false);
+            DrawText(canvas, values["1"], width / 2f, 650, 52, SKColors.DarkRed, true);
+            DrawText(canvas, values["2"], width / 2f, 730, 38, SKColors.Black, false);
+            DrawText(canvas, values["3"], width / 2f, 800, 30, SKColors.DarkSlateGray, false);
+        }
 
         canvas.Flush();
 
@@ -269,7 +235,7 @@ public sealed class CardImageRenderer
         // Return the public relative URL.
         return "/generated/bulk-jobs/" +
                job.JobId.ToString("N") + "/" +
-               recipient.RecipientId + ".png";
+               Uri.EscapeDataString(fileName);
     }
 
     private static Dictionary<string, string> GetValues(
@@ -304,10 +270,10 @@ public sealed class CardImageRenderer
                 }
             }
         }
-        catch (JsonException ex)
+        catch (JsonException)
         {
             // Invalid optional parameter JSON.
-            // Log the issue without stopping card generation.
+            // Continue with the recipient values.
         }
 
         return values;

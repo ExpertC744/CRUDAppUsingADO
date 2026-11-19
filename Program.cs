@@ -10,6 +10,7 @@ using CRUDAppUsingADO.Services;
 using Serilog;
 using System.Text;
 using CRUDAppUsingADO.Models.Configuration;
+using Razorpay.Api;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -185,24 +186,49 @@ builder.Services.AddAuthorization();
 // ==========================================
 // 7. CORS
 // ==========================================
+//builder.Services.AddCors(options =>
+//{
+//    options.AddPolicy("AllowReactApp", policy =>
+//    {
+//        policy
+//            .WithOrigins(
+//                "http://localhost:5173/",
+//                "https://localhost:5173"
+//            )
+//            .AllowAnyHeader()
+//            .AllowAnyMethod()
+//            .AllowCredentials();
+//    });
+//});
+
+//// ==========================================
+//// 7. CORS
+//// ==========================================
+
+// ==========================================
+// 7. CORS
+// ==========================================
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowReactApp", policy =>
     {
+        var frontendUrl = builder.Configuration["Frontend:Url"];
+
+        if (string.IsNullOrWhiteSpace(frontendUrl))
+        {
+            throw new InvalidOperationException(
+                "Frontend:Url is missing from configuration."
+            );
+        }
+
         policy
-            .WithOrigins(
-                "http://localhost:5173/",
-                "https://localhost:5173"
-            )
+            .WithOrigins(frontendUrl)
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials();
     });
 });
 
-//// ==========================================
-//// 7. CORS
-//// ==========================================
 //builder.Services.AddCors(options =>
 //{
 //    options.AddPolicy("AllowReactApp", policy =>
@@ -266,6 +292,19 @@ builder.Services.AddSwaggerGen(c =>
 // ==========================================
 // 9. BUILD APPLICATION
 // ==========================================
+var razorpayKeyId = builder.Configuration["Razorpay:KeyId"];
+var razorpayKeySecret = builder.Configuration["Razorpay:KeySecret"];
+
+if (string.IsNullOrWhiteSpace(razorpayKeyId) ||
+    string.IsNullOrWhiteSpace(razorpayKeySecret))
+{
+    throw new InvalidOperationException(
+        "Razorpay KeyId or KeySecret is missing from configuration.");
+}
+
+builder.Services.AddSingleton(
+    new RazorpayClient(razorpayKeyId, razorpayKeySecret));
+
 var app = builder.Build();
 
 // ==========================================
