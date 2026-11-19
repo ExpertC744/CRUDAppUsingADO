@@ -176,8 +176,7 @@ public sealed class BulkCardController(BulkCardDAL dal, IWebHostEnvironment env)
         //var imageUrl = $"/uploads/card-designs/{Uri.EscapeDataString(file)}";
 
         //------------part 3 
-        var file = Guid.NewGuid().ToString("N")
-           + storedExtension;
+        var file = Guid.NewGuid().ToString("N") + storedExtension;
 
         var path = Path.Combine(dir, file);
 

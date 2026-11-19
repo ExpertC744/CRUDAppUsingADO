@@ -118,14 +118,28 @@ public sealed class SendGridEmailService
             };
 
             // Attach a generated file when its path is available.
-            string? physicalPath = GetSafePhysicalPath(generatedRelativePath);
+            //string? physicalPath = GetSafePhysicalPath(generatedRelativePath);
 
-            if (!string.IsNullOrWhiteSpace(physicalPath) &&
-                File.Exists(physicalPath))
+            // Attach generated card when a path is supplied.
+            // For bulk email, attachment is mandatory.
+            if (!string.IsNullOrWhiteSpace(generatedRelativePath))
             {
-                byte[] bytes = await File.ReadAllBytesAsync(
-                    physicalPath,
-                    cancellationToken);
+                string? physicalPath = GetSafePhysicalPath(generatedRelativePath);
+
+                if (string.IsNullOrWhiteSpace(physicalPath) ||
+                    !File.Exists(physicalPath))
+                {
+                    throw new FileNotFoundException(
+                        $"Generated email attachment not found: {generatedRelativePath}");
+                }
+
+                var fileInfo = new FileInfo(physicalPath);
+
+                if (fileInfo.Length == 0)
+                {
+                    throw new InvalidOperationException(
+                        "Generated email attachment is empty.");
+                }
 
                 string extension = Path.GetExtension(physicalPath).ToLowerInvariant();
 
@@ -134,20 +148,59 @@ public sealed class SendGridEmailService
                     ".pdf" => "application/pdf",
                     ".png" => "image/png",
                     ".jpg" or ".jpeg" => "image/jpeg",
-                    _ => "application/octet-stream"
+                    _ => throw new NotSupportedException(
+                        $"Unsupported email attachment format: {extension}")
                 };
+
+                byte[] bytes = await File.ReadAllBytesAsync(
+                    physicalPath,
+                    cancellationToken);
 
                 payload["attachments"] = new[]
                 {
-                    new
-                    {
-                        content = Convert.ToBase64String(bytes),
-                        type = mimeType,
-                        filename = Path.GetFileName(physicalPath),
-                        disposition = "attachment"
-                    }
-                };
+        new
+        {
+            content = Convert.ToBase64String(bytes),
+            type = mimeType,
+            filename = Path.GetFileName(physicalPath),
+            disposition = "attachment"
+        }
+    };
+
+                _logger.LogInformation(
+                    "Email attachment prepared. File={File}, Size={Size}",
+                    physicalPath,
+                    bytes.Length);
             }
+
+            //if (!string.IsNullOrWhiteSpace(physicalPath) &&
+            //    File.Exists(physicalPath))
+            //{
+            //    byte[] bytes = await File.ReadAllBytesAsync(
+            //        physicalPath,
+            //        cancellationToken);
+
+            //    string extension = Path.GetExtension(physicalPath).ToLowerInvariant();
+
+            //    string mimeType = extension switch
+            //    {
+            //        ".pdf" => "application/pdf",
+            //        ".png" => "image/png",
+            //        ".jpg" or ".jpeg" => "image/jpeg",
+            //        _ => "application/octet-stream"
+            //    };
+
+            //    payload["attachments"] = new[]
+            //    {
+            //        new
+            //        {
+            //            content = Convert.ToBase64String(bytes),
+            //            type = mimeType,
+            //            filename = Path.GetFileName(physicalPath),
+            //            disposition = "attachment"
+            //        }
+            //    };
+            //}
 
             var client = _httpClientFactory.CreateClient("SendGrid");
 
