@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace CRUDAppUsingADO.Controllers;
 
 [ApiController]
-[Route("api/admin/whatsapp-templates")]
+[Route("admin/whatsapp-templates")]
 [Authorize(Roles = "Admin")]
 public sealed class WhatsAppTemplateSelectionController(
     WhatsAppTemplateSelectionDAL dal) : ControllerBase

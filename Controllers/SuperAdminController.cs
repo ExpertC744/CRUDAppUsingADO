@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace CRUDAppUsingADO.Controllers
 {
     [ApiController]
-    [Route("api/superadmin")]
+    [Route("superadmin")]
     [Authorize(Roles = "SuperAdmin")]
     public class SuperAdminController : ControllerBase
     {

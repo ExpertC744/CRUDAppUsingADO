@@ -7,7 +7,7 @@ using System.Security.Claims;
 namespace CRUDAppUsingADO.Controllers
 {
     [ApiController]
-    [Route("api/admin/event-gallery")]
+    [Route("admin/event-gallery")]
     [Authorize(Roles = "Admin")]
     public class EventGalleryController : ControllerBase
     {

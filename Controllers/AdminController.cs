@@ -8,7 +8,7 @@ using System.Security.Claims;
 namespace CRUDAppUsingADO.Controllers;
 
 [ApiController]
-[Route("api/admin")]
+[Route("admin")]
 [Authorize(Roles = "Admin")]
 public class AdminController : ControllerBase
 {

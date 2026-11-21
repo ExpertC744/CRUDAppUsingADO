@@ -7,7 +7,7 @@ using System.Security.Claims;
 namespace CRUDAppUsingADO.Controllers;
 
 [ApiController]
-[Route("api/admin")]
+[Route("admin")]
 [Authorize(Roles = "Admin")]
 public sealed class BulkCardController(BulkCardDAL dal, IWebHostEnvironment env) : ControllerBase
 {

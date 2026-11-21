@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace CRUDAppUsingADO.Controllers
 {
     [ApiController]
-    [Route("api/event-registration")]
+    [Route("event-registration")]
     public class EventRegistrationController : ControllerBase
     {
         private readonly AdminEventDAL _eventDAL;
