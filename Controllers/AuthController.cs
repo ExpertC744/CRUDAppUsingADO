@@ -11,7 +11,7 @@ using System.Security.Claims;
 namespace CRUDAppUsingADO.Controllers
 {
     [ApiController]
-    [Route("api/auth")]
+    [Route("auth")]
     public class AuthController : ControllerBase
     {
 

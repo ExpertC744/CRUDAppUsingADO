@@ -8,7 +8,7 @@ using System.Security.Claims;
 namespace CRUDAppUsingADO.Controllers
 {
     [ApiController]
-    [Route("api/feedback")]
+    [Route("feedback")]
     [Authorize]
     public class FeedbackController : ControllerBase
     {

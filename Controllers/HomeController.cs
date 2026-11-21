@@ -10,7 +10,7 @@ using System.Text;
 namespace CRUDAppUsingADO.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("[controller]")]
     public class HomeController : ControllerBase
     {
         private readonly FeedbackDAL _feedbackDAL;

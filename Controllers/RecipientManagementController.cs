@@ -9,7 +9,7 @@ using System.Security.Claims;
 namespace CRUDAppUsingADO.Controllers;
 
 [ApiController]
-[Route("api/admin/recipients")]
+[Route("admin/recipients")]
 [Authorize(Roles = "Admin")]
 public sealed class RecipientManagementController(
     RecipientManagementDAL dal,

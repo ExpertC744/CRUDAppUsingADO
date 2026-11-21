@@ -344,6 +344,7 @@ app.UseMiddleware<ExceptionMiddleware>();
 // 11. ROUTES
 // ==========================================
 app.MapControllers();
+app.MapGet("/health", () => Results.Ok("API is running"));
 
 app.MapControllerRoute(
     name: "default",

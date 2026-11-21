@@ -10,7 +10,7 @@ using Microsoft.Extensions.Options;
 namespace CRUDAppUsingADO.Controllers
 {
     [ApiController]
-    [Route("api/admin/subscription")]
+    [Route("admin/subscription")]
     [Authorize(Roles = "Admin")]
     public class AdminSubscriptionController : ControllerBase
     {
