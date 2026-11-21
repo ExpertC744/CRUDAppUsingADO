@@ -71,9 +71,12 @@ builder.Services.AddHttpContextAccessor();
 // Subscription Management
 builder.Services.AddScoped<SubscriptionDAL>();
 builder.Services.AddScoped<SubscriptionPaymentDAL>();
-// Payment Gateway
+// ==========================================
+// RAZORPAY PAYMENT GATEWAY
+// ==========================================
+
 builder.Services.Configure<PaymentGatewaySettings>(
-builder.Configuration.GetSection("PaymentGateway"));
+    builder.Configuration.GetSection("Razorpay"));
 
 builder.Services.AddHttpClient<IRazorpayService, RazorpayService>();
 builder.Services.AddScoped<PromoCodeDAL>();

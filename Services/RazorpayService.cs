@@ -12,28 +12,47 @@ namespace CRUDAppUsingADO.Services
         private readonly HttpClient _httpClient;
         private readonly PaymentGatewaySettings _settings;
 
-        public RazorpayService(
-            HttpClient httpClient,
-            IOptions<PaymentGatewaySettings> options)
+        public RazorpayService(HttpClient httpClient, IOptions<PaymentGatewaySettings> options)
         {
             _httpClient = httpClient;
             _settings = options.Value;
 
-            var credentials = Convert.ToBase64String(
-                Encoding.UTF8.GetBytes(
-                    $"{_settings.KeyId}:{_settings.KeySecret}"));
+            if (string.IsNullOrWhiteSpace(_settings.KeyId) || string.IsNullOrWhiteSpace(_settings.KeySecret))
+            {
+                throw new InvalidOperationException("Razorpay KeyId or KeySecret is missing. Check Razorpay configuration.");
+            }
 
-            _httpClient.BaseAddress =
-                new Uri("https://api.razorpay.com/v1/");
+            if (!_settings.KeyId.StartsWith("rzp_test_", StringComparison.OrdinalIgnoreCase) && !_settings.KeyId.StartsWith("rzp_live_", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Invalid Razorpay KeyId format.");
+            }
 
-            _httpClient.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Basic", credentials);
+            var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_settings.KeyId.Trim()}:{_settings.KeySecret.Trim()}"));
+
+            _httpClient.BaseAddress = new Uri("https://api.razorpay.com/v1/");
+
+            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
         }
 
-        public async Task<string> CreateOrderAsync(
-            decimal amount,
-            string receipt,
-            CancellationToken cancellationToken = default)
+        //public RazorpayService(
+        //    HttpClient httpClient,
+        //    IOptions<PaymentGatewaySettings> options)
+        //{
+        //    _httpClient = httpClient;
+        //    _settings = options.Value;
+
+        //    var credentials = Convert.ToBase64String(
+        //        Encoding.UTF8.GetBytes(
+        //            $"{_settings.KeyId}:{_settings.KeySecret}"));
+
+        //    _httpClient.BaseAddress =
+        //        new Uri("https://api.razorpay.com/v1/");
+
+        //    _httpClient.DefaultRequestHeaders.Authorization =
+        //        new AuthenticationHeaderValue("Basic", credentials);
+        //}
+
+        public async Task<string> CreateOrderAsync(decimal amount, string receipt, CancellationToken cancellationToken = default)
         {
             var amountInPaise = Convert.ToInt64(
                 Math.Round(amount * 100m, 0, MidpointRounding.AwayFromZero));
@@ -69,10 +88,7 @@ namespace CRUDAppUsingADO.Services
                 .GetString()!;
         }
 
-        public bool VerifyPaymentSignature(
-            string orderId,
-            string paymentId,
-            string signature)
+        public bool VerifyPaymentSignature(string orderId, string paymentId, string signature)
         {
             if (string.IsNullOrWhiteSpace(orderId) ||
                 string.IsNullOrWhiteSpace(paymentId) ||
@@ -108,10 +124,7 @@ namespace CRUDAppUsingADO.Services
             }
         }
 
-        public async Task<bool> IsPaymentCapturedAsync(
-            string paymentId,
-            decimal expectedAmount,
-            CancellationToken cancellationToken = default)
+        public async Task<bool> IsPaymentCapturedAsync(string paymentId, decimal expectedAmount, CancellationToken cancellationToken = default)
         {
             using var response = await _httpClient.GetAsync(
                 $"payments/{Uri.EscapeDataString(paymentId)}",
@@ -140,9 +153,7 @@ namespace CRUDAppUsingADO.Services
                    && amountInPaise == expectedPaise;
         }
 
-        public bool VerifyWebhookSignature(
-            string body,
-            string signature)
+        public bool VerifyWebhookSignature(string body, string signature)
         {
             if (string.IsNullOrWhiteSpace(_settings.WebhookSecret) ||
                 string.IsNullOrWhiteSpace(signature))
@@ -170,5 +181,6 @@ namespace CRUDAppUsingADO.Services
                 return false;
             }
         }
+        
     }
 }
