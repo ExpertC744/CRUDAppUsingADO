@@ -1,5 +1,4 @@
-﻿
-using CRUDAppUsingADO.DataAccess;
+﻿using CRUDAppUsingADO.DataAccess;
 
 namespace CRUDAppUsingADO.Services;
 
@@ -42,7 +41,7 @@ public sealed class BulkJobBackgroundService : BackgroundService
                     continue;
                 }
 
-                _logger.LogInformation(
+               _logger.LogInformation(
                     "Claimed bulk job {JobId}",
                     jobId.Value);
 

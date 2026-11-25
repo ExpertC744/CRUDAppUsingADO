@@ -453,4 +453,36 @@ public class AdminController : ControllerBase
         });
     }
 
+
+
+    // GET: api/admin/registrations
+    [HttpGet("registrations")]
+    public async Task<IActionResult> GetAllMyRegistrations([FromServices] EventRegistrationDAL registrationDAL)
+    {
+        if (!TryGetUserId(out Guid adminUserId))
+            return Unauthorized(new
+            {
+                success = false,
+                message = "Invalid admin token."
+            });
+
+        if (!await CanAdminAccessAsync(adminUserId))
+            return StatusCode(403, new
+            {
+                success = false,
+                message = "Admin account disabled or inactive."
+            });
+
+        var registrations =
+            await registrationDAL.GetAllRegistrationsByAdminAsync(adminUserId);
+
+        return Ok(new
+        {
+            success = true,
+            totalRecords = registrations.Count,
+            registrations
+        });
+    }
+
+
 }

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
+using CRUDAppUsingADO.Models;
 
 namespace CRUDAppUsingADO.Controllers;
 
@@ -12,8 +13,7 @@ namespace CRUDAppUsingADO.Controllers;
 [Route("admin/recipients")]
 [Authorize(Roles = "Admin")]
 public sealed class RecipientManagementController(
-    RecipientManagementDAL dal,
-    AdminProfileDAL adminProfileDAL) : ControllerBase
+    RecipientManagementDAL dal, AdminProfileDAL adminProfileDAL, AdminEventDAL eventDAL, EventRegistrationDAL registrationDAL) : ControllerBase
 {
     private bool TryGetAdminId(out Guid id)
     {
@@ -387,6 +387,90 @@ public sealed class RecipientManagementController(
             warning = result.InUse > 0
                 ? "Some recipients are currently used in Pending or Processing jobs and could not be removed."
                 : null
+        });
+    }
+
+    // IMPORT EVENT REGISTRATION PARTICIPANTS INTO RECIPIENTS
+    // POST: admin/recipients/import-event-registrations/40382
+
+    [HttpPost("import-event-registrations/{eventId:int}")]
+    public async Task<IActionResult> ImportEventRegistrations(int eventId, CancellationToken ct)
+    {
+        // 1. Validate logged-in admin.
+        if (!TryGetAdminId(out var adminId))
+            return Unauthorized(new
+            {
+                success = false,
+                message = "Invalid admin token."
+            });
+
+        // 2. Check admin status.
+        if (!await IsEnabledAdminAsync(adminId, ct))
+            return Forbid();
+
+        // 3. Validate Event ID.
+        if (eventId <= 0)
+            return BadRequest(new
+            {
+                success = false,
+                message = "Invalid Event ID."
+            });
+
+        // 4. Verify event belongs to this admin.
+        var eventDetails = await eventDAL.GetByIdAsync(eventId, adminId);
+
+        if (eventDetails == null)
+            return NotFound(new
+            {
+                success = false,
+                message = "Event not found or you do not own this event."
+            });
+
+        // 5. Get event registration participants.
+        var eventRecipients =
+            await registrationDAL.GetEventRecipientsForImportAsync(eventId, ct);
+
+        var rows = eventRecipients.Rows;
+
+        if (rows.Count == 0)
+        {
+            return Ok(new
+            {
+                success = true,
+                eventId,
+                eventName = eventDetails.EventTitle,
+                sourceRecords = 0,
+                inserted = 0,
+                duplicates = 0,
+                skipped = eventRecipients.Skipped,
+                message = "No valid event participants were found to import."
+            });
+        }
+
+        // 6. Import into CardRecipients for this admin.
+        // Existing ImportAsync handles duplicate checking and mobile normalization.
+        var imported = await dal.ImportAsync(
+            adminId,
+            rows,
+            $"Event Registration - {eventId}",
+            ct);
+
+        // 7. Return import summary.
+        return Ok(new
+        {
+            success = true,
+            message = "Event registration participants imported into recipients successfully.",
+
+            eventId,
+            eventName = eventDetails.EventTitle,
+
+            sourceRecords = rows.Count + eventRecipients.Skipped,
+
+            inserted = imported.inserted,
+            duplicates = imported.duplicates,
+            skipped = eventRecipients.Skipped,
+
+            totalProcessed = rows.Count + eventRecipients.Skipped
         });
     }
 

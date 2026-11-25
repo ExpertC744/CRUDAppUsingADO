@@ -392,5 +392,26 @@ namespace CRUDAppUsingADO.Controllers
 
 
 
+        [HttpGet("events/{eventId:int}/registration-summary")]
+        public async Task<IActionResult> GetEventRegistrationSummary(int eventId,
+            [FromServices] EventRegistrationDAL registrationDAL)
+        {
+            if (eventId <= 0)
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Invalid Event ID."
+                });
+
+            var summary =
+                await registrationDAL.GetEventRegistrationSummaryAsync(eventId);
+
+            return Ok(new
+            {
+                success = true,
+                summary
+            });
+        }
+
     }
 }
