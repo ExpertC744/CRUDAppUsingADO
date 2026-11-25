@@ -1,5 +1,6 @@
 ﻿using CRUDAppUsingADO.Models;
 using CRUDAppUsingADO.Models.Attendance;
+using CRUDAppUsingADO.Models.Bulk;
 using Microsoft.Data.SqlClient;
 using System.Data;
 
@@ -337,6 +338,228 @@ namespace CRUDAppUsingADO.DataAccess
                 FullName = reader["FullName"].ToString()!,
                 Email = reader["Email"].ToString()!
             };
+        }
+
+
+        public async Task<List<object>> GetAllRegistrationsByAdminAsync(Guid adminUserId)
+        {
+            var result = new List<object>();
+
+            using var con = GetConnection();
+
+            const string sql = @"
+        SELECT
+            e.EventTitle,
+
+            r.RegistrationId,
+            r.EventId,
+            r.RegistrationType,
+            r.GroupName,
+            r.TeamLeadName,
+            r.TotalParticipants,
+            r.TotalAmount,
+            r.RegistrationDate,
+            r.RegistrationStatus,
+
+            p.ParticipantId,
+            p.FullName,
+            p.Gender,
+            p.DOB,
+            p.Age,
+            p.Email,
+            p.WhatsAppNo,
+            p.Address,
+            p.ProfileImage,
+            p.RegistrationCategory,
+            p.CollegeName,
+            p.Stream,
+            p.Branch,
+            p.AcademicYear,
+            p.OrganizationName,
+            p.Designation,
+            p.Experience
+
+        FROM dbo.AdminEvents e
+
+        INNER JOIN dbo.EventRegistrations r
+            ON e.EventId = r.EventId
+
+        INNER JOIN dbo.EventRegistrationParticipants p
+            ON r.RegistrationId = p.RegistrationId
+
+        WHERE e.AdminUserId = @AdminUserId
+
+        ORDER BY r.RegistrationDate DESC, p.ParticipantId;";
+
+            using var cmd = new SqlCommand(sql, con);
+
+            cmd.Parameters.Add("@AdminUserId", SqlDbType.UniqueIdentifier)
+                .Value = adminUserId;
+
+            await con.OpenAsync();
+
+            using var reader = await cmd.ExecuteReaderAsync();
+
+            while (await reader.ReadAsync())
+            {
+                result.Add(new
+                {
+                    EventTitle = reader["EventTitle"],
+
+                    RegistrationId = reader["RegistrationId"],
+                    EventId = reader["EventId"],
+                    RegistrationType = reader["RegistrationType"],
+                    GroupName = reader["GroupName"],
+                    TeamLeadName = reader["TeamLeadName"],
+                    TotalParticipants = reader["TotalParticipants"],
+                    TotalAmount = reader["TotalAmount"],
+                    RegistrationDate = reader["RegistrationDate"],
+                    RegistrationStatus = reader["RegistrationStatus"],
+
+                    ParticipantId = reader["ParticipantId"],
+                    FullName = reader["FullName"],
+                    Gender = reader["Gender"],
+                    DOB = reader["DOB"],
+                    Age = reader["Age"],
+                    Email = reader["Email"],
+                    WhatsAppNo = reader["WhatsAppNo"],
+                    Address = reader["Address"],
+                    ProfileImage = reader["ProfileImage"],
+                    RegistrationCategory = reader["RegistrationCategory"],
+                    CollegeName = reader["CollegeName"],
+                    Stream = reader["Stream"],
+                    Branch = reader["Branch"],
+                    AcademicYear = reader["AcademicYear"],
+
+                    OrganizationName = reader["OrganizationName"] == DBNull.Value
+                        ? null : reader["OrganizationName"].ToString(),
+
+                    Designation = reader["Designation"] == DBNull.Value
+                        ? null : reader["Designation"].ToString(),
+
+                    Experience = reader["Experience"] == DBNull.Value
+                        ? null : reader["Experience"].ToString()
+                });
+            }
+
+            return result;
+        }
+
+
+        public async Task<object> GetEventRegistrationSummaryAsync(int eventId)
+        {
+            using var con = GetConnection();
+
+            const string sql = @"
+        SELECT
+            @EventId AS EventId,
+            COUNT(DISTINCT r.RegistrationId) AS TotalRegistrations,
+            COUNT(p.ParticipantId) AS TotalParticipants
+
+        FROM dbo.EventRegistrations r
+
+        LEFT JOIN dbo.EventRegistrationParticipants p
+            ON r.RegistrationId = p.RegistrationId
+
+        WHERE r.EventId = @EventId;";
+
+            using var cmd = new SqlCommand(sql, con);
+
+            cmd.Parameters.Add("@EventId", SqlDbType.Int).Value = eventId;
+
+            await con.OpenAsync();
+
+            using var reader = await cmd.ExecuteReaderAsync();
+
+            if (await reader.ReadAsync())
+            {
+                return new
+                {
+                    EventId = Convert.ToInt32(reader["EventId"]),
+                    TotalRegistrations = Convert.ToInt32(reader["TotalRegistrations"]),
+                    TotalParticipants = Convert.ToInt32(reader["TotalParticipants"])
+                };
+            }
+
+            return new
+            {
+                EventId = eventId,
+                TotalRegistrations = 0,
+                TotalParticipants = 0
+            };
+        }
+
+
+        public async Task<(List<RecipientRow> Rows, int Skipped)> GetEventRecipientsForImportAsync(int eventId, CancellationToken ct)
+        {
+            var rows = new List<RecipientRow>();
+            int skipped = 0;
+
+            using var con = GetConnection();
+
+            const string sql = @"
+        SELECT
+            p.FullName,
+            p.Email,
+            p.WhatsAppNo,
+            r.GroupName
+        FROM dbo.EventRegistrations r
+        INNER JOIN dbo.EventRegistrationParticipants p
+            ON p.RegistrationId = r.RegistrationId
+        WHERE r.EventId = @EventId
+        ORDER BY r.RegistrationDate DESC, p.ParticipantId;";
+
+            using var cmd = new SqlCommand(sql, con);
+
+            cmd.Parameters.Add("@EventId", SqlDbType.Int).Value = eventId;
+
+            await con.OpenAsync(ct);
+
+            using var reader = await cmd.ExecuteReaderAsync(ct);
+
+            while (await reader.ReadAsync(ct))
+            {
+                var fullName = reader["FullName"] == DBNull.Value
+                    ? null
+                    : reader["FullName"].ToString()?.Trim();
+
+                var email = reader["Email"] == DBNull.Value
+                    ? null
+                    : reader["Email"].ToString()?.Trim();
+
+                var mobile = reader["WhatsAppNo"] == DBNull.Value
+                    ? null
+                    : reader["WhatsAppNo"].ToString()?.Trim();
+
+                var groupName = reader["GroupName"] == DBNull.Value
+                    ? null
+                    : reader["GroupName"].ToString()?.Trim();
+
+                // Skip records that cannot be added as recipients.
+                if (string.IsNullOrWhiteSpace(fullName) ||
+                    (string.IsNullOrWhiteSpace(email) &&
+                     string.IsNullOrWhiteSpace(mobile)))
+                {
+                    skipped++;
+                    continue;
+                }
+
+                rows.Add(new RecipientRow
+                {
+                    FullName = fullName,
+                    Email = email,
+                    Mobile = mobile,
+                    GroupName = groupName,
+
+                    // These fields are not available in event registration.
+                    Text1 = null,
+                    Text2 = null,
+                    Text3 = null,
+                    Text4 = null
+                });
+            }
+
+            return (rows, skipped);
         }
     }
 }
